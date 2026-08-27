@@ -1,7 +1,7 @@
 import mysql, { Pool } from "mysql2/promise";
 import type { Field, Next } from "mysql2/typings/mysql/lib/parsers/typeCast";
 
-function castBitsToBoolean(field: Field, next: Next): unknown {
+export function castBitsToBoolean(field: Field, next: Next): unknown {
   if (field.type === "BIT" && field.length === 1) {
     const bytes = field.buffer();
     return bytes === null ? null : bytes[0] === 1;
