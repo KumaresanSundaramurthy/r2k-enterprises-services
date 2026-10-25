@@ -14,7 +14,7 @@ function createKnex(host: string | undefined) {
       decimalNumbers: true,
       typeCast: castBitsToBoolean,
     },
-    pool: { min: 1, max: 10 },
+    pool: { min: 0, max: Number(process.env.DB_POOL_MAX || 10) },
   });
 }
 

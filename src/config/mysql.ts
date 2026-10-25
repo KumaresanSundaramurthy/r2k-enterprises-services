@@ -24,7 +24,7 @@ function createPool(host: string | undefined): Pool {
     database: process.env.MYSQL_DATABASE,
     ssl: { rejectUnauthorized: false },
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: Number(process.env.DB_POOL_MAX || 10),
     decimalNumbers: true,
     typeCast: castBitsToBoolean,
   });

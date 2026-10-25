@@ -2,8 +2,8 @@ import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/co
 import * as bcrypt from "bcryptjs";
 import { JwtService } from "@nestjs/jwt";
 import { UserRecord, UserRepository } from "./user.repository";
-import { RegisterDto } from "./dto/register.dto";
-import { LoginDto } from "./dto/login.dto";
+import { ShopRegisterDto } from "./dto/register.dto";
+import { ShopLoginDto } from "./dto/login.dto";
 import { JwtPayload } from "../common/interfaces/jwt-payload.interface";
 
 @Injectable()
@@ -13,7 +13,7 @@ export class ShopAuthService {
     private readonly jwtService: JwtService
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: ShopRegisterDto) {
     const email = dto.email.toLowerCase();
     const existing = await this.userRepository.findByEmail(email);
     if (existing) {
@@ -32,7 +32,7 @@ export class ShopAuthService {
     return this.buildAuthResponse(user);
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: ShopLoginDto) {
     const user = await this.userRepository.findByEmail(dto.email.toLowerCase());
     if (!user) {
       throw new UnauthorizedException("Invalid email or password");

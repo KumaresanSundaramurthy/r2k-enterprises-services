@@ -11,6 +11,12 @@ This repo includes a `Dockerfile` and a `render.yaml` blueprint.
 2. Fill in the env vars it prompts for (`JWT_KEY`, `CLIENT_URL`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, plus the MySQL vars below)
 3. Deploy — Render builds the Dockerfile and exposes the service on a `*.onrender.com` URL
 
+**Vercel:**
+1. Add New → Project → import this repo. Leave Framework Preset as **Other**; `vercel.json` takes care of the build (`npm run vercel-build`) and routes every request to `api/index.js`, which serves the compiled Nest app.
+2. Add the env vars below (Settings → Environment Variables), then deploy.
+3. Set Settings → Functions → **Function Region** to the region closest to your MySQL and Redis servers — every request talks to both.
+4. Keep `DB_POOL_MAX` low (e.g. `2`): each running function instance opens its own database connections.
+
 **Railway (alternative):** New Project → Deploy from GitHub repo → Railway auto-detects the Dockerfile → add the same env vars in the Variables tab.
 
 ## 3. Environment variables needed in production

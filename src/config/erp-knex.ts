@@ -28,7 +28,8 @@ function createErpKnex(host: string | undefined) {
       ssl: { rejectUnauthorized: false },
       typeCast: castAllToString,
     },
-    pool: { min: 1, max: 10 },
+    // min 0: on Vercel every function instance has its own pools, so idle instances should hold no connections
+    pool: { min: 0, max: Number(process.env.DB_POOL_MAX || 10) },
   });
 }
 
