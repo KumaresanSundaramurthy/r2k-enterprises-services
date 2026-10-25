@@ -4,6 +4,7 @@ dotenv.config();
 
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
@@ -12,7 +13,9 @@ import { connectMySQL } from "./config/mysql";
 async function bootstrap(): Promise<void> {
   await connectMySQL();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Behind Render's proxy: use the client IP from X-Forwarded-For (login rate limiting and audit rely on it)
+  app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
   const allowedOrigins = (process.env.CLIENT_URL || "")
     .split(",")

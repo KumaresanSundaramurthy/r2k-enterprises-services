@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { JwtPayload } from "../common/interfaces/jwt-payload.interface";
@@ -14,6 +14,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): JwtPayload {
+    // ERP session tokens are signed with the same JWT_KEY but carry a Redis key instead of a shop userId.
+    if (typeof payload.userId !== "number") {
+      throw new UnauthorizedException();
+    }
     return payload;
   }
 }

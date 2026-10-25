@@ -32,3 +32,55 @@ services:
         sync: false
       - key: ASSET_BASE_URL
         sync: false
+      - key: JWT_COOKIE_NAME
+        sync: false
+      - key: LOGIN_EXPIRE_SECS
+        sync: false
+      - key: CI_ENV
+        value: production
+      - key: HTTP_HOST
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: API_BASE_URL
+        sync: false
+      - key: COOKIE_DOMAIN
+        sync: false
+      - key: REDIS_PROTOCOL
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        sync: false
+      - key: REDIS_DATABASE
+        sync: false
+      - key: REDIS_USERNAME
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM_EMAIL
+        sync: false
+      - key: MAIL_FROM_NAME
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false
+      - key: GSTIN_API_KEY
+        sync: false
+      - key: FILE_UPLOAD
+        sync: false
+      - key: CDN_URL
+        sync: false
+      - key: CFLARE_R2_CDN
+        sync: false

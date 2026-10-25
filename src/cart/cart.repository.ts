@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
-import { mysqlReadPool, mysqlWritePool } from "../config/mysql";
+import { knexRead, knexWrite } from "../config/knex";
 
 export interface CartItem {
   productId: number;
@@ -21,39 +20,41 @@ export interface CartRecord {
   updatedOn: Date;
 }
 
-const SELECT = `
-  SELECT CartUID AS cartUID, UserUID AS userUID, Items AS items, CreatedOn AS createdOn, UpdatedOn AS updatedOn
-  FROM CartTbl
-`;
+interface CartTblRow {
+  CartUID: number;
+  UserUID: number;
+  Items: CartItem[];
+  CreatedOn: Date;
+  UpdatedOn: Date;
+}
 
-function mapRow(row: RowDataPacket): CartRecord {
+function mapRow(row: CartTblRow): CartRecord {
   return {
-    cartUID: row.cartUID,
-    userUID: row.userUID,
-    items: row.items,
-    createdOn: row.createdOn,
-    updatedOn: row.updatedOn,
+    cartUID: row.CartUID,
+    userUID: row.UserUID,
+    items: row.Items,
+    createdOn: row.CreatedOn,
+    updatedOn: row.UpdatedOn,
   };
 }
 
 @Injectable()
 export class CartRepository {
   async getCartByUser(userUID: number): Promise<CartRecord | null> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(`${SELECT} WHERE UserUID = ?`, [userUID]);
-    return rows.length > 0 ? mapRow(rows[0]) : null;
+    const row = await knexRead<CartTblRow>("CartTbl").where({ UserUID: userUID }).first();
+    return row ? mapRow(row) : null;
   }
 
   async createCart(userUID: number): Promise<CartRecord> {
-    await mysqlWritePool.query<ResultSetHeader>(`INSERT INTO CartTbl (UserUID, Items) VALUES (?, ?)`, [
-      userUID,
-      JSON.stringify([]),
-    ]);
+    await knexWrite<CartTblRow>("CartTbl").insert({ UserUID: userUID, Items: JSON.stringify([]) as unknown as CartItem[] });
     const cart = await this.getCartByUser(userUID);
     if (!cart) throw new Error("Failed to load created cart");
     return cart;
   }
 
   async saveCartItems(userUID: number, items: CartItem[]): Promise<void> {
-    await mysqlWritePool.query(`UPDATE CartTbl SET Items = ? WHERE UserUID = ?`, [JSON.stringify(items), userUID]);
+    await knexWrite<CartTblRow>("CartTbl")
+      .where({ UserUID: userUID })
+      .update({ Items: JSON.stringify(items) as unknown as CartItem[] });
   }
 }

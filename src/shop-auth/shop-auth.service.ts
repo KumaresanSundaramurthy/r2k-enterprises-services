@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { JwtService } from "@nestjs/jwt";
 import { UserRecord, UserRepository } from "./user.repository";
@@ -7,7 +7,7 @@ import { LoginDto } from "./dto/login.dto";
 import { JwtPayload } from "../common/interfaces/jwt-payload.interface";
 
 @Injectable()
-export class AuthService {
+export class ShopAuthService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly jwtService: JwtService
@@ -44,24 +44,6 @@ export class AuthService {
     }
 
     return this.buildAuthResponse(user);
-  }
-
-  async getMe(userId: number) {
-    const user = await this.userRepository.findById(userId);
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    return {
-      user: {
-        userUID: user.userUID,
-        orgUID: user.orgUID,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        createdOn: user.createdOn,
-        updatedOn: user.updatedOn,
-      },
-    };
   }
 
   private buildAuthResponse(user: UserRecord) {

@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import type { Knex } from "knex";
 import crypto from "crypto";
-import { mysqlReadPool, mysqlWritePool } from "../config/mysql";
+import { knexRead, knexWrite } from "../config/knex";
 
 const ASSET_BASE_URL = process.env.ASSET_BASE_URL || "";
 
@@ -56,31 +56,22 @@ const SORT_COLUMNS: Record<string, string> = {
   name_asc: "name ASC",
 };
 
-const BASE_SELECT = `
-  SELECT
-    p.ProductUID AS productUID,
-    p.ItemName AS name,
-    p.Description AS description,
-    p.SellingPrice AS basePrice,
-    p.MRP AS mrp,
-    p.CategoryUID AS categoryUID,
-    c.Name AS category,
-    p.CreatedOn AS createdOn,
-    COALESCE(s.AvailableQty, 0) AS stock,
-    (SELECT MIN(v.SellingPrice) FROM ProductVariantTbl v
-       WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1) AS variantMinPrice,
-    (SELECT MAX(v.SellingPrice) FROM ProductVariantTbl v
-       WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1) AS variantMaxPrice,
-    (SELECT ea.FilePath FROM EntityAttachmentsTbl ea
-       WHERE ea.EntityType = 'Product' AND ea.EntityUID = p.ProductUID AND ea.OrgUID = p.OrgUID
-         AND ea.IsDeleted = 0 AND ea.IsActive = 1
-       ORDER BY ea.SortOrder ASC LIMIT 1) AS imagePath
-  FROM ProductTbl p
-  LEFT JOIN CategoryTbl c ON c.CategoryUID = p.CategoryUID AND c.OrgUID = p.OrgUID
-  LEFT JOIN ProductStockTbl s ON s.ProductUID = p.ProductUID AND s.OrgUID = p.OrgUID
-`;
+interface ProductListRow {
+  productUID: number;
+  name: string;
+  description: string | null;
+  basePrice: number;
+  mrp: number;
+  categoryUID: number | null;
+  category: string | null;
+  createdOn: Date;
+  stock: number;
+  variantMinPrice: number | null;
+  variantMaxPrice: number | null;
+  imagePath: string | null;
+}
 
-function mapRow(row: RowDataPacket): ProductListItem & { basePrice: number; mrp: number } {
+function mapRow(row: ProductListRow): ProductListItem & { basePrice: number; mrp: number } {
   const hasVariants = row.variantMinPrice !== null;
   return {
     productUID: row.productUID,
@@ -88,8 +79,8 @@ function mapRow(row: RowDataPacket): ProductListItem & { basePrice: number; mrp:
     description: row.description || "",
     category: row.category,
     categoryUID: row.categoryUID,
-    priceFrom: hasVariants ? row.variantMinPrice : row.basePrice,
-    priceTo: hasVariants ? row.variantMaxPrice : row.basePrice,
+    priceFrom: hasVariants ? (row.variantMinPrice as number) : row.basePrice,
+    priceTo: hasVariants ? (row.variantMaxPrice as number) : row.basePrice,
     hasVariants,
     stock: row.stock,
     imageUrl: toImageUrl(row.imagePath),
@@ -216,208 +207,203 @@ export interface ProductFullDetail {
   images: ProductImage[];
 }
 
-const FULL_SELECT = `
-  SELECT
-    p.ProductUID AS productUID, p.OrgUID AS orgUID, p.ProdToken AS prodToken,
-    p.ItemName AS name, p.ProductType AS productType,
-    p.UnitPrice AS unitPrice, p.MRP AS mrp, p.SellingPrice AS sellingPrice,
-    p.SellingProductTaxUID AS sellingProductTaxUID, pt1.Name AS sellingProductTaxName,
-    p.TaxDetailsUID AS taxDetailsUID, td.TaxName AS taxName, td.DisplayName AS taxDisplayName,
-    p.TaxPercentage AS taxPercentage, p.CGST AS cgst, p.SGST AS sgst, p.IGST AS igst,
-    p.PrimaryUnitUID AS primaryUnitUID, pu.Name AS primaryUnitName, pu.ShortName AS primaryUnitShortName,
-    p.CategoryUID AS categoryUID, c.Name AS category,
-    p.StorageUID AS storageUID, st.Name AS storage,
-    p.HSNSACCode AS hsnSacCode,
-    p.PurchasePrice AS purchasePrice,
-    p.PurchasePriceProductTaxUID AS purchasePriceProductTaxUID, pt2.Name AS purchasePriceProductTaxName,
-    p.PartNumber AS partNumber, p.SKU AS sku, p.Description AS description,
-    p.OpeningQuantity AS openingQuantity, p.OpeningPurchasePrice AS openingPurchasePrice,
-    p.OpeningStockValue AS openingStockValue,
-    p.Discount AS discount, p.DiscountTypeUID AS discountTypeUID,
-    dt.DisplayName AS discountTypeName, dt.Symbol AS discountTypeSymbol,
-    p.LowStockAlertAt AS lowStockAlertAt, p.NotForSale AS notForSale,
-    p.IsRentable AS isRentable, p.IsSizeApplicable AS isSizeApplicable,
-    p.IsComboItem AS isComboItem, p.IsComposite AS isComposite,
-    p.IsBrandApplicable AS isBrandApplicable, p.IsSerialTracked AS isSerialTracked,
-    p.IsActive AS isActive, p.IsDeleted AS isDeleted,
-    p.CreatedBy AS createdBy, p.UpdatedBy AS updatedBy, p.CreatedOn AS createdOn, p.UpdatedOn AS updatedOn,
-    COALESCE(s.AvailableQty, 0) AS stock
-  FROM ProductTbl p
-  LEFT JOIN CategoryTbl c ON c.CategoryUID = p.CategoryUID AND c.OrgUID = p.OrgUID
-  LEFT JOIN StorageTbl st ON st.StorageUID = p.StorageUID
-  LEFT JOIN ProductStockTbl s ON s.ProductUID = p.ProductUID AND s.OrgUID = p.OrgUID
-  LEFT JOIN Global.TaxDetailsTbl td ON td.TaxDetailsUID = p.TaxDetailsUID
-  LEFT JOIN Global.PrimaryUnitTbl pu ON pu.PrimaryUnitUID = p.PrimaryUnitUID
-  LEFT JOIN Global.DiscountTypeTbl dt ON dt.DiscountTypeUID = p.DiscountTypeUID
-  LEFT JOIN Global.ProductTaxTbl pt1 ON pt1.ProductTaxUID = p.SellingProductTaxUID
-  LEFT JOIN Global.ProductTaxTbl pt2 ON pt2.ProductTaxUID = p.PurchasePriceProductTaxUID
-  WHERE p.OrgUID = ? AND p.ProductUID = ? AND p.IsDeleted = 0
-`;
-
 @Injectable()
 export class ProductsRepository {
-  async listProducts(orgUID: number, filters: ProductFilters): Promise<ProductListItem[]> {
-    const conditions = ["p.OrgUID = ?", "p.IsDeleted = 0", "p.IsActive = 1", "p.ProductType = 'Product'"];
-    const params: unknown[] = [orgUID];
+  private baseProductQuery() {
+    return knexRead({ p: "ProductTbl" })
+      .select({
+        productUID: "p.ProductUID",
+        name: "p.ItemName",
+        description: "p.Description",
+        basePrice: "p.SellingPrice",
+        mrp: "p.MRP",
+        categoryUID: "p.CategoryUID",
+        category: "c.Name",
+        createdOn: "p.CreatedOn",
+        stock: knexRead.raw("COALESCE(s.AvailableQty, 0)"),
+        variantMinPrice: knexRead.raw(
+          `(SELECT MIN(v.SellingPrice) FROM ProductVariantTbl v
+             WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1)`
+        ),
+        variantMaxPrice: knexRead.raw(
+          `(SELECT MAX(v.SellingPrice) FROM ProductVariantTbl v
+             WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1)`
+        ),
+        imagePath: knexRead.raw(
+          `(SELECT ea.FilePath FROM EntityAttachmentsTbl ea
+             WHERE ea.EntityType = 'Product' AND ea.EntityUID = p.ProductUID AND ea.OrgUID = p.OrgUID
+               AND ea.IsDeleted = 0 AND ea.IsActive = 1
+             ORDER BY ea.SortOrder ASC LIMIT 1)`
+        ),
+      })
+      .leftJoin({ c: "CategoryTbl" }, function (this: Knex.JoinClause) {
+        this.on("c.CategoryUID", "p.CategoryUID").andOn("c.OrgUID", "p.OrgUID");
+      })
+      .leftJoin({ s: "ProductStockTbl" }, function (this: Knex.JoinClause) {
+        this.on("s.ProductUID", "p.ProductUID").andOn("s.OrgUID", "p.OrgUID");
+      });
+  }
+
+  private async queryProductList(orgUID: number, filters: ProductFilters): Promise<ProductListItem[]> {
+    const inner = this.baseProductQuery()
+      .where("p.OrgUID", orgUID)
+      .andWhere("p.IsDeleted", 0)
+      .andWhere("p.IsActive", 1)
+      .andWhere("p.ProductType", "Product");
 
     if (filters.category) {
-      conditions.push("c.Name = ?");
-      params.push(filters.category);
+      inner.andWhere("c.Name", filters.category);
     }
     if (filters.search) {
-      conditions.push("p.ItemName LIKE ?");
-      params.push(`%${filters.search}%`);
+      inner.andWhere("p.ItemName", "like", `%${filters.search}%`);
     }
     if (filters.brand) {
-      conditions.push(
+      inner.andWhereRaw(
         `EXISTS (SELECT 1 FROM ProductVariantTbl v JOIN BrandTbl b ON b.BrandUID = v.BrandUID AND b.OrgUID = v.OrgUID
-           WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1 AND b.BrandName = ?)`
+           WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1 AND b.BrandName = ?)`,
+        [filters.brand]
       );
-      params.push(filters.brand);
     }
 
-    const havingConditions: string[] = [];
-    const havingParams: unknown[] = [];
+    const outer = knexRead
+      .select("t.*")
+      .select({ effectivePrice: knexRead.raw("COALESCE(t.variantMinPrice, t.basePrice)") })
+      .from(inner.as("t"));
 
     if (filters.minPrice !== undefined) {
-      havingConditions.push("COALESCE(t.variantMinPrice, t.basePrice) >= ?");
-      havingParams.push(filters.minPrice);
+      outer.andWhereRaw("COALESCE(t.variantMinPrice, t.basePrice) >= ?", [filters.minPrice]);
     }
     if (filters.maxPrice !== undefined) {
-      havingConditions.push("COALESCE(t.variantMinPrice, t.basePrice) <= ?");
-      havingParams.push(filters.maxPrice);
+      outer.andWhereRaw("COALESCE(t.variantMinPrice, t.basePrice) <= ?", [filters.maxPrice]);
     }
 
-    let sql = `SELECT t.*, COALESCE(t.variantMinPrice, t.basePrice) AS effectivePrice FROM (${BASE_SELECT} WHERE ${conditions.join(" AND ")}) t`;
-    if (havingConditions.length > 0) {
-      sql += ` WHERE ${havingConditions.join(" AND ")}`;
-    }
     const sortColumn = SORT_COLUMNS[filters.sort || "newest"] || SORT_COLUMNS.newest;
-    sql += ` ORDER BY ${sortColumn}`;
+    outer.orderByRaw(sortColumn);
 
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(sql, [...params, ...havingParams]);
+    const rows = await outer;
     return rows.map(mapRow);
   }
 
+  async listProducts(orgUID: number, filters: ProductFilters): Promise<ProductFullDetail[]> {
+    const items = await this.queryProductList(orgUID, filters);
+    const details = await Promise.all(items.map((item) => this.getProductFullDetail(orgUID, item.productUID)));
+    return details.filter((detail): detail is ProductFullDetail => detail !== null);
+  }
+
   async listCategories(orgUID: number): Promise<{ categoryUID: number; name: string }[]> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT CategoryUID AS categoryUID, Name AS name FROM CategoryTbl
-       WHERE OrgUID = ? AND IsDeleted = 0 AND IsActive = 1 ORDER BY Name`,
-      [orgUID]
-    );
-    return rows as { categoryUID: number; name: string }[];
+    return knexRead("CategoryTbl")
+      .where({ OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
+      .orderBy("Name")
+      .select({ categoryUID: "CategoryUID", name: "Name" });
   }
 
   async listBrands(orgUID: number): Promise<{ brandUID: number; name: string }[]> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT DISTINCT b.BrandUID AS brandUID, b.BrandName AS name
-       FROM BrandTbl b
-       JOIN ProductVariantTbl v ON v.BrandUID = b.BrandUID AND v.OrgUID = b.OrgUID
-       WHERE b.OrgUID = ? AND b.IsDeleted = 0 AND b.IsActive = 1 AND v.IsDeleted = 0 AND v.IsActive = 1
-       ORDER BY b.BrandName`,
-      [orgUID]
-    );
-    return rows as { brandUID: number; name: string }[];
+    return knexRead({ b: "BrandTbl" })
+      .join({ v: "ProductVariantTbl" }, function (this: Knex.JoinClause) {
+        this.on("v.BrandUID", "b.BrandUID").andOn("v.OrgUID", "b.OrgUID");
+      })
+      .where({ "b.OrgUID": orgUID, "b.IsDeleted": 0, "b.IsActive": 1, "v.IsDeleted": 0, "v.IsActive": 1 })
+      .orderBy("b.BrandName")
+      .distinct({ brandUID: "b.BrandUID", name: "b.BrandName" });
   }
 
   async getProductById(orgUID: number, productUID: number): Promise<ProductDetail | null> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT t.* FROM (${BASE_SELECT} WHERE p.OrgUID = ? AND p.ProductUID = ? AND p.IsDeleted = 0 AND p.IsActive = 1) t`,
-      [orgUID, productUID]
-    );
-    if (rows.length === 0) return null;
-    const base = mapRow(rows[0]);
+    const row = await this.baseProductQuery()
+      .where("p.OrgUID", orgUID)
+      .andWhere("p.ProductUID", productUID)
+      .andWhere("p.IsDeleted", 0)
+      .andWhere("p.IsActive", 1)
+      .first();
+    if (!row) return null;
+    const base = mapRow(row);
 
-    const [variantRows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT v.VariantUID AS variantUID, v.BrandUID AS brandUID, b.BrandName AS brand,
-              v.SizeUID AS sizeUID, sz.Name AS size, v.PartNumber AS partNumber, v.SellingPrice AS price
-       FROM ProductVariantTbl v
-       LEFT JOIN BrandTbl b ON b.BrandUID = v.BrandUID AND b.OrgUID = v.OrgUID
-       LEFT JOIN SizeTbl sz ON sz.SizeUID = v.SizeUID AND sz.OrgUID = v.OrgUID
-       WHERE v.ProductUID = ? AND v.OrgUID = ? AND v.IsDeleted = 0 AND v.IsActive = 1`,
-      [productUID, orgUID]
-    );
+    const variantRows: ProductVariant[] = await knexRead({ v: "ProductVariantTbl" })
+      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+        this.on("b.BrandUID", "v.BrandUID").andOn("b.OrgUID", "v.OrgUID");
+      })
+      .leftJoin({ sz: "SizeTbl" }, function (this: Knex.JoinClause) {
+        this.on("sz.SizeUID", "v.SizeUID").andOn("sz.OrgUID", "v.OrgUID");
+      })
+      .where("v.ProductUID", productUID)
+      .andWhere("v.OrgUID", orgUID)
+      .andWhere("v.IsDeleted", 0)
+      .andWhere("v.IsActive", 1)
+      .select({
+        variantUID: "v.VariantUID",
+        brandUID: "v.BrandUID",
+        brand: "b.BrandName",
+        sizeUID: "v.SizeUID",
+        size: "sz.Name",
+        partNumber: "v.PartNumber",
+        price: "v.SellingPrice",
+      });
 
-    const [imageRows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT FilePath FROM EntityAttachmentsTbl
-       WHERE EntityType = 'Product' AND EntityUID = ? AND OrgUID = ? AND IsDeleted = 0 AND IsActive = 1
-       ORDER BY SortOrder ASC`,
-      [productUID, orgUID]
-    );
+    const imageRows: { FilePath: string }[] = await knexRead("EntityAttachmentsTbl")
+      .where({ EntityType: "Product", EntityUID: productUID, OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
+      .orderBy("SortOrder", "asc")
+      .select("FilePath");
 
     return {
       ...base,
-      variants: (variantRows as RowDataPacket[]).map((v) => ({
-        variantUID: v.variantUID,
-        brandUID: v.brandUID,
-        brand: v.brand,
-        sizeUID: v.sizeUID,
-        size: v.size,
-        partNumber: v.partNumber,
-        price: v.price,
-      })),
-      images: (imageRows as RowDataPacket[])
-        .map((i) => toImageUrl(i.FilePath))
-        .filter((url): url is string => url !== null),
+      variants: variantRows,
+      images: imageRows.map((row) => toImageUrl(row.FilePath)).filter((url): url is string => url !== null),
     };
   }
 
   async getVariantById(orgUID: number, productUID: number, variantUID: number): Promise<ProductVariant | null> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT v.VariantUID AS variantUID, v.BrandUID AS brandUID, b.BrandName AS brand,
-              v.SizeUID AS sizeUID, sz.Name AS size, v.PartNumber AS partNumber, v.SellingPrice AS price
-       FROM ProductVariantTbl v
-       LEFT JOIN BrandTbl b ON b.BrandUID = v.BrandUID AND b.OrgUID = v.OrgUID
-       LEFT JOIN SizeTbl sz ON sz.SizeUID = v.SizeUID AND sz.OrgUID = v.OrgUID
-       WHERE v.VariantUID = ? AND v.ProductUID = ? AND v.OrgUID = ? AND v.IsDeleted = 0 AND v.IsActive = 1`,
-      [variantUID, productUID, orgUID]
-    );
-    if (rows.length === 0) return null;
-    const v = rows[0];
-    return {
-      variantUID: v.variantUID,
-      brandUID: v.brandUID,
-      brand: v.brand,
-      sizeUID: v.sizeUID,
-      size: v.size,
-      partNumber: v.partNumber,
-      price: v.price,
-    };
+    const row: ProductVariant | undefined = await knexRead({ v: "ProductVariantTbl" })
+      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+        this.on("b.BrandUID", "v.BrandUID").andOn("b.OrgUID", "v.OrgUID");
+      })
+      .leftJoin({ sz: "SizeTbl" }, function (this: Knex.JoinClause) {
+        this.on("sz.SizeUID", "v.SizeUID").andOn("sz.OrgUID", "v.OrgUID");
+      })
+      .where({
+        "v.VariantUID": variantUID,
+        "v.ProductUID": productUID,
+        "v.OrgUID": orgUID,
+        "v.IsDeleted": 0,
+        "v.IsActive": 1,
+      })
+      .select({
+        variantUID: "v.VariantUID",
+        brandUID: "v.BrandUID",
+        brand: "b.BrandName",
+        sizeUID: "v.SizeUID",
+        size: "sz.Name",
+        partNumber: "v.PartNumber",
+        price: "v.SellingPrice",
+      })
+      .first();
+    return row ?? null;
   }
 
   async hasActiveVariants(orgUID: number, productUID: number): Promise<boolean> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT 1 FROM ProductVariantTbl WHERE ProductUID = ? AND OrgUID = ? AND IsDeleted = 0 AND IsActive = 1 LIMIT 1`,
-      [productUID, orgUID]
-    );
-    return rows.length > 0;
+    const row = await knexRead("ProductVariantTbl")
+      .where({ ProductUID: productUID, OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
+      .first(knexRead.raw("1 as one"));
+    return row !== undefined;
   }
 
   async createProduct(orgUID: number, input: CreateProductInput): Promise<ProductDetail> {
     const prodToken = crypto.randomUUID();
-    const [result] = await mysqlWritePool.query<ResultSetHeader>(
-      `INSERT INTO ProductTbl
-         (OrgUID, ProdToken, ItemName, Description, UnitPrice, SellingPrice, MRP, CategoryUID,
-          TaxDetailsUID, TaxPercentage, CGST, SGST, IGST)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, 0)`,
-      [
-        orgUID,
-        prodToken,
-        input.name,
-        input.description || "",
-        input.price,
-        input.price,
-        input.mrp || 0,
-        input.categoryUID ?? null,
-      ]
-    );
-    const productUID = result.insertId;
+    const [productUID] = await knexWrite("ProductTbl").insert({
+      OrgUID: orgUID,
+      ProdToken: prodToken,
+      ItemName: input.name,
+      Description: input.description || "",
+      UnitPrice: input.price,
+      SellingPrice: input.price,
+      MRP: input.mrp || 0,
+      CategoryUID: input.categoryUID ?? null,
+      TaxDetailsUID: 1,
+      TaxPercentage: 0,
+      CGST: 0,
+      SGST: 0,
+      IGST: 0,
+    });
 
-    await mysqlWritePool.query(`INSERT INTO ProductStockTbl (ProductUID, OrgUID, AvailableQty) VALUES (?, ?, ?)`, [
-      productUID,
-      orgUID,
-      input.stock,
-    ]);
+    await knexWrite("ProductStockTbl").insert({ ProductUID: productUID, OrgUID: orgUID, AvailableQty: input.stock });
 
     const created = await this.getProductById(orgUID, productUID);
     if (!created) throw new Error("Failed to load created product");
@@ -428,117 +414,197 @@ export class ProductsRepository {
     const existing = await this.getProductById(orgUID, productUID);
     if (!existing) return null;
 
-    const setClauses: string[] = [];
-    const params: unknown[] = [];
-    if (input.name !== undefined) {
-      setClauses.push("ItemName = ?");
-      params.push(input.name);
-    }
-    if (input.description !== undefined) {
-      setClauses.push("Description = ?");
-      params.push(input.description);
-    }
+    const updateData: Record<string, unknown> = {};
+    if (input.name !== undefined) updateData.ItemName = input.name;
+    if (input.description !== undefined) updateData.Description = input.description;
     if (input.price !== undefined) {
-      setClauses.push("SellingPrice = ?", "UnitPrice = ?");
-      params.push(input.price, input.price);
+      updateData.SellingPrice = input.price;
+      updateData.UnitPrice = input.price;
     }
-    if (input.mrp !== undefined) {
-      setClauses.push("MRP = ?");
-      params.push(input.mrp);
-    }
-    if (input.categoryUID !== undefined) {
-      setClauses.push("CategoryUID = ?");
-      params.push(input.categoryUID);
-    }
+    if (input.mrp !== undefined) updateData.MRP = input.mrp;
+    if (input.categoryUID !== undefined) updateData.CategoryUID = input.categoryUID;
 
-    if (setClauses.length > 0) {
-      await mysqlWritePool.query(`UPDATE ProductTbl SET ${setClauses.join(", ")} WHERE ProductUID = ? AND OrgUID = ?`, [
-        ...params,
-        productUID,
-        orgUID,
-      ]);
+    if (Object.keys(updateData).length > 0) {
+      await knexWrite("ProductTbl").where({ ProductUID: productUID, OrgUID: orgUID }).update(updateData);
     }
 
     if (input.stock !== undefined) {
-      await mysqlWritePool.query(
-        `INSERT INTO ProductStockTbl (ProductUID, OrgUID, AvailableQty) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE AvailableQty = VALUES(AvailableQty)`,
-        [productUID, orgUID, input.stock]
-      );
+      await knexWrite("ProductStockTbl")
+        .insert({ ProductUID: productUID, OrgUID: orgUID, AvailableQty: input.stock })
+        .onConflict(["ProductUID", "OrgUID"])
+        .merge({ AvailableQty: input.stock });
     }
 
     return this.getProductById(orgUID, productUID);
   }
 
   async deleteProduct(orgUID: number, productUID: number): Promise<boolean> {
-    const [result] = await mysqlWritePool.query<ResultSetHeader>(
-      `UPDATE ProductTbl SET IsDeleted = 1 WHERE ProductUID = ? AND OrgUID = ? AND IsDeleted = 0`,
-      [productUID, orgUID]
-    );
-    return result.affectedRows > 0;
+    const affectedRows = await knexWrite("ProductTbl")
+      .where({ ProductUID: productUID, OrgUID: orgUID, IsDeleted: 0 })
+      .update({ IsDeleted: 1 });
+    return affectedRows > 0;
   }
 
   async decrementStock(orgUID: number, productUID: number, quantity: number): Promise<void> {
-    await mysqlWritePool.query(`UPDATE ProductStockTbl SET AvailableQty = AvailableQty - ? WHERE ProductUID = ? AND OrgUID = ?`, [
-      quantity,
-      productUID,
-      orgUID,
-    ]);
+    await knexWrite("ProductStockTbl")
+      .where({ ProductUID: productUID, OrgUID: orgUID })
+      .decrement("AvailableQty", quantity);
   }
 
   async getProductFullDetail(orgUID: number, productUID: number): Promise<ProductFullDetail | null> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(FULL_SELECT, [orgUID, productUID]);
-    if (rows.length === 0) return null;
-    const p = rows[0] as ProductFullDetail;
+    const row = await knexRead<Omit<ProductFullDetail, "variants" | "brandStock" | "images">>({ p: "ProductTbl" })
+      .select({
+        productUID: "p.ProductUID",
+        orgUID: "p.OrgUID",
+        prodToken: "p.ProdToken",
+        name: "p.ItemName",
+        productType: "p.ProductType",
+        unitPrice: "p.UnitPrice",
+        mrp: "p.MRP",
+        sellingPrice: "p.SellingPrice",
+        sellingProductTaxUID: "p.SellingProductTaxUID",
+        sellingProductTaxName: "pt1.Name",
+        taxDetailsUID: "p.TaxDetailsUID",
+        taxName: "td.TaxName",
+        taxDisplayName: "td.DisplayName",
+        taxPercentage: "p.TaxPercentage",
+        cgst: "p.CGST",
+        sgst: "p.SGST",
+        igst: "p.IGST",
+        primaryUnitUID: "p.PrimaryUnitUID",
+        primaryUnitName: "pu.Name",
+        primaryUnitShortName: "pu.ShortName",
+        categoryUID: "p.CategoryUID",
+        category: "c.Name",
+        storageUID: "p.StorageUID",
+        storage: "st.Name",
+        hsnSacCode: "p.HSNSACCode",
+        purchasePrice: "p.PurchasePrice",
+        purchasePriceProductTaxUID: "p.PurchasePriceProductTaxUID",
+        purchasePriceProductTaxName: "pt2.Name",
+        partNumber: "p.PartNumber",
+        sku: "p.SKU",
+        description: "p.Description",
+        openingQuantity: "p.OpeningQuantity",
+        openingPurchasePrice: "p.OpeningPurchasePrice",
+        openingStockValue: "p.OpeningStockValue",
+        discount: "p.Discount",
+        discountTypeUID: "p.DiscountTypeUID",
+        discountTypeName: "dt.DisplayName",
+        discountTypeSymbol: "dt.Symbol",
+        lowStockAlertAt: "p.LowStockAlertAt",
+        notForSale: "p.NotForSale",
+        isRentable: "p.IsRentable",
+        isSizeApplicable: "p.IsSizeApplicable",
+        isComboItem: "p.IsComboItem",
+        isComposite: "p.IsComposite",
+        isBrandApplicable: "p.IsBrandApplicable",
+        isSerialTracked: "p.IsSerialTracked",
+        isActive: "p.IsActive",
+        isDeleted: "p.IsDeleted",
+        createdBy: "p.CreatedBy",
+        updatedBy: "p.UpdatedBy",
+        createdOn: "p.CreatedOn",
+        updatedOn: "p.UpdatedOn",
+        stock: knexRead.raw("COALESCE(s.AvailableQty, 0)"),
+      })
+      .leftJoin({ c: "CategoryTbl" }, function (this: Knex.JoinClause) {
+        this.on("c.CategoryUID", "p.CategoryUID").andOn("c.OrgUID", "p.OrgUID");
+      })
+      .leftJoin({ st: "StorageTbl" }, "st.StorageUID", "p.StorageUID")
+      .leftJoin({ s: "ProductStockTbl" }, function (this: Knex.JoinClause) {
+        this.on("s.ProductUID", "p.ProductUID").andOn("s.OrgUID", "p.OrgUID");
+      })
+      .leftJoin({ td: "Global.TaxDetailsTbl" }, "td.TaxDetailsUID", "p.TaxDetailsUID")
+      .leftJoin({ pu: "Global.PrimaryUnitTbl" }, "pu.PrimaryUnitUID", "p.PrimaryUnitUID")
+      .leftJoin({ dt: "Global.DiscountTypeTbl" }, "dt.DiscountTypeUID", "p.DiscountTypeUID")
+      .leftJoin({ pt1: "Global.ProductTaxTbl" }, "pt1.ProductTaxUID", "p.SellingProductTaxUID")
+      .leftJoin({ pt2: "Global.ProductTaxTbl" }, "pt2.ProductTaxUID", "p.PurchasePriceProductTaxUID")
+      .where("p.OrgUID", orgUID)
+      .andWhere("p.ProductUID", productUID)
+      .andWhere("p.IsDeleted", 0)
+      .first();
 
-    const [variantRows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT v.VariantUID AS variantUID, v.BrandUID AS brandUID, b.BrandName AS brand,
-              v.SizeUID AS sizeUID, sz.Name AS size, sz.SizeCode AS sizeCode, sz.Description AS sizeDescription,
-              v.PartNumber AS partNumber, v.PurchasePrice AS purchasePrice, v.PurchaseTaxUID AS purchaseTaxUID,
-              v.SellingPrice AS sellingPrice, v.SellingTaxUID AS sellingTaxUID,
-              v.IsActive AS isActive, v.IsDeleted AS isDeleted,
-              COALESCE(vs.OpeningQty, 0) AS openingQty, COALESCE(vs.AvailableQty, 0) AS availableQty,
-              v.CreatedOn AS createdOn, v.UpdatedOn AS updatedOn
-       FROM ProductVariantTbl v
-       LEFT JOIN BrandTbl b ON b.BrandUID = v.BrandUID AND b.OrgUID = v.OrgUID
-       LEFT JOIN SizeTbl sz ON sz.SizeUID = v.SizeUID AND sz.OrgUID = v.OrgUID
-       LEFT JOIN ProductVariantStockTbl vs ON vs.VariantUID = v.VariantUID AND vs.OrgUID = v.OrgUID
-       WHERE v.ProductUID = ? AND v.OrgUID = ? AND v.IsDeleted = 0`,
-      [productUID, orgUID]
-    );
+    if (!row) return null;
 
-    const [brandStockRows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT bs.BrandUID AS brandUID, b.BrandName AS brand,
-              bs.OpeningQty AS openingQty, bs.AvailableQty AS availableQty, bs.UpdatedOn AS updatedOn
-       FROM ProductBrandStockTbl bs
-       LEFT JOIN BrandTbl b ON b.BrandUID = bs.BrandUID AND b.OrgUID = bs.OrgUID
-       WHERE bs.ProductUID = ? AND bs.OrgUID = ?`,
-      [productUID, orgUID]
-    );
+    const variantRows = await knexRead<ProductFullVariant>({ v: "ProductVariantTbl" })
+      .select({
+        variantUID: "v.VariantUID",
+        brandUID: "v.BrandUID",
+        brand: "b.BrandName",
+        sizeUID: "v.SizeUID",
+        size: "sz.Name",
+        sizeCode: "sz.SizeCode",
+        sizeDescription: "sz.Description",
+        partNumber: "v.PartNumber",
+        purchasePrice: "v.PurchasePrice",
+        purchaseTaxUID: "v.PurchaseTaxUID",
+        sellingPrice: "v.SellingPrice",
+        sellingTaxUID: "v.SellingTaxUID",
+        isActive: "v.IsActive",
+        isDeleted: "v.IsDeleted",
+        openingQty: knexRead.raw("COALESCE(vs.OpeningQty, 0)"),
+        availableQty: knexRead.raw("COALESCE(vs.AvailableQty, 0)"),
+        createdOn: "v.CreatedOn",
+        updatedOn: "v.UpdatedOn",
+      })
+      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+        this.on("b.BrandUID", "v.BrandUID").andOn("b.OrgUID", "v.OrgUID");
+      })
+      .leftJoin({ sz: "SizeTbl" }, function (this: Knex.JoinClause) {
+        this.on("sz.SizeUID", "v.SizeUID").andOn("sz.OrgUID", "v.OrgUID");
+      })
+      .leftJoin({ vs: "ProductVariantStockTbl" }, function (this: Knex.JoinClause) {
+        this.on("vs.VariantUID", "v.VariantUID").andOn("vs.OrgUID", "v.OrgUID");
+      })
+      .where("v.ProductUID", productUID)
+      .andWhere("v.OrgUID", orgUID)
+      .andWhere("v.IsDeleted", 0);
 
-    const [imageRows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT AttachUID AS attachUID, FileName AS fileName, FilePath AS filePath, FileSize AS fileSize,
-              SortOrder AS sortOrder, IsActive AS isActive, CreatedOn AS createdOn, UpdatedOn AS updatedOn
-       FROM EntityAttachmentsTbl
-       WHERE EntityType = 'Product' AND EntityUID = ? AND OrgUID = ? AND IsDeleted = 0
-       ORDER BY SortOrder ASC`,
-      [productUID, orgUID]
-    );
+    const brandStockRows = await knexRead<ProductBrandStock>({ bs: "ProductBrandStockTbl" })
+      .select({
+        brandUID: "bs.BrandUID",
+        brand: "b.BrandName",
+        openingQty: "bs.OpeningQty",
+        availableQty: "bs.AvailableQty",
+        updatedOn: "bs.UpdatedOn",
+      })
+      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+        this.on("b.BrandUID", "bs.BrandUID").andOn("b.OrgUID", "bs.OrgUID");
+      })
+      .where("bs.ProductUID", productUID)
+      .andWhere("bs.OrgUID", orgUID);
+
+    const imageRows: {
+      attachUID: number;
+      fileName: string;
+      filePath: string;
+      fileSize: number;
+      sortOrder: number;
+      isActive: boolean;
+      createdOn: Date;
+      updatedOn: Date;
+    }[] = await knexRead("EntityAttachmentsTbl")
+      .where({ EntityType: "Product", EntityUID: productUID, OrgUID: orgUID, IsDeleted: 0 })
+      .orderBy("SortOrder", "asc")
+      .select({
+        attachUID: "AttachUID",
+        fileName: "FileName",
+        filePath: "FilePath",
+        fileSize: "FileSize",
+        sortOrder: "SortOrder",
+        isActive: "IsActive",
+        createdOn: "CreatedOn",
+        updatedOn: "UpdatedOn",
+      });
 
     return {
-      ...p,
-      variants: variantRows as unknown as ProductFullVariant[],
-      brandStock: brandStockRows as unknown as ProductBrandStock[],
-      images: (imageRows as RowDataPacket[]).map((row) => ({
-        attachUID: row.attachUID,
-        fileName: row.fileName,
-        filePath: row.filePath,
-        imageUrl: toImageUrl(row.filePath),
-        fileSize: row.fileSize,
-        sortOrder: row.sortOrder,
-        isActive: row.isActive,
-        createdOn: row.createdOn,
-        updatedOn: row.updatedOn,
+      ...row,
+      variants: variantRows,
+      brandStock: brandStockRows,
+      images: imageRows.map((image) => ({
+        ...image,
+        imageUrl: toImageUrl(image.filePath),
       })),
     };
   }

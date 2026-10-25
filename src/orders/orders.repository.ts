@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
-import { mysqlReadPool, mysqlWritePool } from "../config/mysql";
+import { knexRead, knexWrite } from "../config/knex";
 
 export type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
 export type PaymentMethod = "cod" | "razorpay";
@@ -43,30 +42,39 @@ export interface OrderRecord {
   userEmail?: string;
 }
 
-const SELECT = `
-  SELECT o.OrderUID AS orderUID, o.UserUID AS userUID, o.OrgUID AS orgUID, o.Items AS items,
-         o.ShippingAddress AS shippingAddress, o.TotalAmount AS totalAmount, o.Status AS status,
-         o.PaymentMethod AS paymentMethod, o.PaymentStatus AS paymentStatus,
-         o.RazorpayOrderId AS razorpayOrderId, o.RazorpayPaymentId AS razorpayPaymentId,
-         o.CreatedOn AS createdOn, o.UpdatedOn AS updatedOn
-  FROM OrderTbl o
-`;
+interface OrderTblRow {
+  OrderUID: number;
+  UserUID: number;
+  OrgUID: number;
+  Items: OrderItem[];
+  ShippingAddress: ShippingAddress;
+  TotalAmount: number;
+  Status: OrderStatus;
+  PaymentMethod: PaymentMethod;
+  PaymentStatus: PaymentStatus;
+  RazorpayOrderId: string | null;
+  RazorpayPaymentId: string | null;
+  CreatedOn: Date;
+  UpdatedOn: Date;
+  userName?: string;
+  userEmail?: string;
+}
 
-function mapRow(row: RowDataPacket): OrderRecord {
+function mapRow(row: OrderTblRow): OrderRecord {
   return {
-    orderUID: row.orderUID,
-    userUID: row.userUID,
-    orgUID: row.orgUID,
-    items: row.items,
-    shippingAddress: row.shippingAddress,
-    totalAmount: Number(row.totalAmount),
-    status: row.status,
-    paymentMethod: row.paymentMethod,
-    paymentStatus: row.paymentStatus,
-    razorpayOrderId: row.razorpayOrderId,
-    razorpayPaymentId: row.razorpayPaymentId,
-    createdOn: row.createdOn,
-    updatedOn: row.updatedOn,
+    orderUID: row.OrderUID,
+    userUID: row.UserUID,
+    orgUID: row.OrgUID,
+    items: row.Items,
+    shippingAddress: row.ShippingAddress,
+    totalAmount: Number(row.TotalAmount),
+    status: row.Status,
+    paymentMethod: row.PaymentMethod,
+    paymentStatus: row.PaymentStatus,
+    razorpayOrderId: row.RazorpayOrderId,
+    razorpayPaymentId: row.RazorpayPaymentId,
+    createdOn: row.CreatedOn,
+    updatedOn: row.UpdatedOn,
     ...(row.userName !== undefined ? { userName: row.userName, userEmail: row.userEmail } : {}),
   };
 }
@@ -86,69 +94,53 @@ export interface CreateOrderInput {
 @Injectable()
 export class OrdersRepository {
   async createOrder(input: CreateOrderInput): Promise<OrderRecord> {
-    const [result] = await mysqlWritePool.query<ResultSetHeader>(
-      `INSERT INTO OrderTbl
-         (UserUID, OrgUID, Items, ShippingAddress, TotalAmount, PaymentMethod, PaymentStatus, RazorpayOrderId, RazorpayPaymentId)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        input.userUID,
-        input.orgUID,
-        JSON.stringify(input.items),
-        JSON.stringify(input.shippingAddress),
-        input.totalAmount,
-        input.paymentMethod,
-        input.paymentStatus,
-        input.razorpayOrderId ?? null,
-        input.razorpayPaymentId ?? null,
-      ]
-    );
-    const order = await this.findOrderById(result.insertId);
+    const [orderUID] = await knexWrite<OrderTblRow>("OrderTbl").insert({
+      UserUID: input.userUID,
+      OrgUID: input.orgUID,
+      Items: JSON.stringify(input.items) as unknown as OrderItem[],
+      ShippingAddress: JSON.stringify(input.shippingAddress) as unknown as ShippingAddress,
+      TotalAmount: input.totalAmount,
+      PaymentMethod: input.paymentMethod,
+      PaymentStatus: input.paymentStatus,
+      RazorpayOrderId: input.razorpayOrderId ?? null,
+      RazorpayPaymentId: input.razorpayPaymentId ?? null,
+    });
+    const order = await this.findOrderById(orderUID);
     if (!order) throw new Error("Failed to load created order");
     return order;
   }
 
   async findOrderById(orderUID: number): Promise<OrderRecord | null> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(`${SELECT} WHERE o.OrderUID = ?`, [orderUID]);
-    return rows.length > 0 ? mapRow(rows[0]) : null;
+    const row = await knexRead<OrderTblRow>("OrderTbl").where({ OrderUID: orderUID }).first();
+    return row ? mapRow(row) : null;
   }
 
   async findOrderByIdForUser(orderUID: number, userUID: number): Promise<OrderRecord | null> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(`${SELECT} WHERE o.OrderUID = ? AND o.UserUID = ?`, [
-      orderUID,
-      userUID,
-    ]);
-    return rows.length > 0 ? mapRow(rows[0]) : null;
+    const row = await knexRead<OrderTblRow>("OrderTbl").where({ OrderUID: orderUID, UserUID: userUID }).first();
+    return row ? mapRow(row) : null;
   }
 
   async findOrdersByUser(userUID: number): Promise<OrderRecord[]> {
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `${SELECT} WHERE o.UserUID = ? ORDER BY o.CreatedOn DESC`,
-      [userUID]
-    );
+    const rows = await knexRead<OrderTblRow>("OrderTbl").where({ UserUID: userUID }).orderBy("CreatedOn", "desc");
     return rows.map(mapRow);
   }
 
   async findAllOrders(status?: OrderStatus): Promise<OrderRecord[]> {
-    const where = status ? "WHERE o.Status = ?" : "";
-    const params = status ? [status] : [];
-    const [rows] = await mysqlReadPool.query<RowDataPacket[]>(
-      `SELECT o.OrderUID AS orderUID, o.UserUID AS userUID, o.OrgUID AS orgUID, o.Items AS items,
-              o.ShippingAddress AS shippingAddress, o.TotalAmount AS totalAmount, o.Status AS status,
-              o.PaymentMethod AS paymentMethod, o.PaymentStatus AS paymentStatus,
-              o.RazorpayOrderId AS razorpayOrderId, o.RazorpayPaymentId AS razorpayPaymentId,
-              o.CreatedOn AS createdOn, o.UpdatedOn AS updatedOn,
-              u.Name AS userName, u.Email AS userEmail
-       FROM OrderTbl o
-       LEFT JOIN UserTbl u ON u.UserUID = o.UserUID
-       ${where}
-       ORDER BY o.CreatedOn DESC`,
-      params
-    );
+    const query = knexRead<OrderTblRow>({ o: "OrderTbl" })
+      .select("o.*", { userName: "u.Name", userEmail: "u.Email" })
+      .leftJoin({ u: "UserTbl" }, "u.UserUID", "o.UserUID")
+      .orderBy("o.CreatedOn", "desc");
+
+    if (status) {
+      query.andWhere("o.Status", status);
+    }
+
+    const rows = await query;
     return rows.map(mapRow);
   }
 
   async updateOrderStatus(orderUID: number, status: OrderStatus): Promise<OrderRecord | null> {
-    await mysqlWritePool.query(`UPDATE OrderTbl SET Status = ? WHERE OrderUID = ?`, [status, orderUID]);
+    await knexWrite("OrderTbl").where({ OrderUID: orderUID }).update({ Status: status });
     return this.findOrderById(orderUID);
   }
 }
