@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "R2K Enterprises common backend services (ecommerce, ERP, and other applications)",
   "main": "dist/main.js",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "nodemon --exec ts-node src/main.ts",
     "build": "tsc",
