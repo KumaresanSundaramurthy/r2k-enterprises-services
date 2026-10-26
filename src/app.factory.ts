@@ -26,8 +26,7 @@ export async function createApp(): Promise<NestExpressApplication> {
       "Common backend services for R2K Enterprises — auth, products (MySQL-backed ERP catalog), cart, orders and Razorpay payments."
     )
     .setVersion("1.0.0")
-    .addBearerAuth()
-    .addCookieAuth(process.env.JWT_COOKIE_NAME || "r2k_token");
+    .addBearerAuth();
 
   // First (default) server is relative, so "Try it out" always calls the host the docs page was loaded from.
   // VERCEL_URL is deliberately not used: it is a per-deployment host, which the browser treats as another origin.

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { ErpSession } from "../decorators/erp-session.decorator";
 import {
@@ -55,7 +55,6 @@ export class PasswordController {
   @UseGuards(ErpSessionGuard)
   @AllowSessionGates("expiredSubscription", "pendingPayment", "onboarding")
   @ApiBearerAuth()
-  @ApiCookieAuth()
   @ApiOperation({ summary: "Change password while logged in — ends the session, so the user signs in again" })
   async change(
     @ErpSession() session: ErpSessionContext,

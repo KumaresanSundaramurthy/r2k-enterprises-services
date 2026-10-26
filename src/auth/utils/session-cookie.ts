@@ -38,9 +38,11 @@ export function readCookie(req: Request, name: string): string | undefined {
 
 // Bearer header first (API clients), then the shared session cookie (browsers).
 export function readSessionToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (auth && auth.startsWith("Bearer ")) {
-    return auth.slice(7).trim() || undefined;
+  const auth = req.headers.authorization?.trim();
+  if (auth) {
+    // Tolerates "bearer" in any case and a doubled prefix ("Bearer Bearer <jwt>" when pasted into Swagger with the prefix)
+    const token = auth.replace(/^(bearer\s+)+/i, "").trim();
+    return token && token !== auth ? token : undefined;
   }
   return readCookie(req, sessionCookieName());
 }

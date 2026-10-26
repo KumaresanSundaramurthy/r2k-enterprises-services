@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { ErpSession } from "../decorators/erp-session.decorator";
 import { IdentifyDto, LoginDto } from "../dto/login.dto";
@@ -52,7 +52,6 @@ export class AuthController {
   @Post("logout")
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiCookieAuth()
   @ApiOperation({ summary: "Log out — ends the session and clears its caches" })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = readSessionToken(req);
@@ -72,7 +71,6 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(ErpSessionGuard)
   @ApiBearerAuth()
-  @ApiCookieAuth()
   @ApiOperation({
     summary: "Refresh menus, permissions and session data",
     description: "Re-reads the role's menus and permissions and the user/org details after an admin changes them.",
