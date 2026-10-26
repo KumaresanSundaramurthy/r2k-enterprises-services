@@ -29,10 +29,10 @@ export async function createApp(): Promise<NestExpressApplication> {
     .addBearerAuth()
     .addCookieAuth(process.env.JWT_COOKIE_NAME || "r2k_token");
 
-  const deployedUrl =
-    process.env.API_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  // First (default) server is relative, so "Try it out" always calls the host the docs page was loaded from.
+  // VERCEL_URL is deliberately not used: it is a per-deployment host, which the browser treats as another origin.
+  swaggerConfigBuilder.addServer("/", "This server");
+  const deployedUrl = process.env.API_BASE_URL || process.env.RENDER_EXTERNAL_URL;
   if (deployedUrl) {
     swaggerConfigBuilder.addServer(deployedUrl, "Deployed server");
   }
