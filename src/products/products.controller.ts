@@ -4,14 +4,14 @@ import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
-import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { CiJwtGuard } from "../common/guards/ci-jwt.guard";
 import { AdminGuard } from "../common/guards/admin.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { JwtPayload } from "../common/interfaces/jwt-payload.interface";
 
 @ApiTags("Products")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(CiJwtGuard)
 @Controller("api/products")
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
