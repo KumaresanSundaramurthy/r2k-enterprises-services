@@ -1,7 +1,7 @@
 -- Tables backing auth, cart and orders (previously stored in MongoDB).
--- Run against the MYSQL_DATABASE (see .env) before deploying this version of the service.
+-- Creates the shop tables in the Products database (names are schema-qualified). Run before using the shop endpoints.
 
-CREATE TABLE IF NOT EXISTS UserTbl (
+CREATE TABLE IF NOT EXISTS Products.UserTbl (
   UserUID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   OrgUID INT UNSIGNED NOT NULL,
   Name VARCHAR(255) NOT NULL,
@@ -13,17 +13,17 @@ CREATE TABLE IF NOT EXISTS UserTbl (
   UNIQUE KEY UQ_UserTbl_Email (Email)
 );
 
-CREATE TABLE IF NOT EXISTS CartTbl (
+CREATE TABLE IF NOT EXISTS Products.CartTbl (
   CartUID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   UserUID INT UNSIGNED NOT NULL,
   Items JSON NOT NULL,
   CreatedOn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UpdatedOn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY UQ_CartTbl_UserUID (UserUID),
-  CONSTRAINT FK_CartTbl_UserTbl FOREIGN KEY (UserUID) REFERENCES UserTbl (UserUID)
+  CONSTRAINT FK_CartTbl_UserTbl FOREIGN KEY (UserUID) REFERENCES Products.UserTbl (UserUID)
 );
 
-CREATE TABLE IF NOT EXISTS OrderTbl (
+CREATE TABLE IF NOT EXISTS Products.OrderTbl (
   OrderUID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   UserUID INT UNSIGNED NOT NULL,
   OrgUID INT UNSIGNED NOT NULL,
@@ -39,5 +39,5 @@ CREATE TABLE IF NOT EXISTS OrderTbl (
   UpdatedOn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY IX_OrderTbl_UserUID (UserUID),
   KEY IX_OrderTbl_Status (Status),
-  CONSTRAINT FK_OrderTbl_UserTbl FOREIGN KEY (UserUID) REFERENCES UserTbl (UserUID)
+  CONSTRAINT FK_OrderTbl_UserTbl FOREIGN KEY (UserUID) REFERENCES Products.UserTbl (UserUID)
 );

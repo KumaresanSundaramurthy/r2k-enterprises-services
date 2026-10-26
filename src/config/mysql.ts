@@ -15,13 +15,13 @@ export function castBitsToBoolean(field: Field, next: Next): unknown {
   return next();
 }
 
+// No default database: queries name their schema explicitly. Used for the startup connectivity check.
 function createPool(host: string | undefined): Pool {
   return mysql.createPool({
     host,
     port: Number(process.env.DB_PORT),
     user: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
-    database: process.env.MYSQL_DATABASE,
     ssl: { rejectUnauthorized: false },
     waitForConnections: true,
     connectionLimit: Number(process.env.DB_POOL_MAX || 10),

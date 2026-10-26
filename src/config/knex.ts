@@ -1,6 +1,7 @@
 import Knex from "knex";
 import { castBitsToBoolean } from "./mysql";
 
+// No default database: every query names its schema explicitly (Products.ProductTbl, Users.UserTbl, ...).
 function createKnex(host: string | undefined) {
   return Knex({
     client: "mysql2",
@@ -9,7 +10,6 @@ function createKnex(host: string | undefined) {
       port: Number(process.env.DB_PORT),
       user: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
       ssl: { rejectUnauthorized: false },
       decimalNumbers: true,
       typeCast: castBitsToBoolean,

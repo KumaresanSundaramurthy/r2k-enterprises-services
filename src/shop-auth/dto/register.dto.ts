@@ -1,7 +1,13 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsNotEmpty, MinLength } from "class-validator";
+import { Type } from "class-transformer";
+import { IsEmail, IsInt, IsNotEmpty, MinLength } from "class-validator";
 
 export class ShopRegisterDto {
+  @ApiProperty({ type: Number, example: 1, description: "OrgUID the customer registers under" })
+  @Type(() => Number)
+  @IsInt()
+  orgId!: number;
+
   @ApiProperty({ example: "Jane Doe" })
   @IsNotEmpty()
   name!: string;

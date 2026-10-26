@@ -21,12 +21,11 @@ export class ShopAuthService {
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const orgUID = Number(process.env.DEFAULT_ORG_UID);
     const user = await this.userRepository.create({
       name: dto.name,
       email,
       password: hashedPassword,
-      orgUID,
+      orgUID: dto.orgId,
     });
 
     return this.buildAuthResponse(user);

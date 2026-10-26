@@ -210,7 +210,7 @@ export interface ProductFullDetail {
 @Injectable()
 export class ProductsRepository {
   private baseProductQuery() {
-    return knexRead({ p: "ProductTbl" })
+    return knexRead({ p: "Products.ProductTbl" })
       .select({
         productUID: "p.ProductUID",
         name: "p.ItemName",
@@ -222,24 +222,24 @@ export class ProductsRepository {
         createdOn: "p.CreatedOn",
         stock: knexRead.raw("COALESCE(s.AvailableQty, 0)"),
         variantMinPrice: knexRead.raw(
-          `(SELECT MIN(v.SellingPrice) FROM ProductVariantTbl v
+          `(SELECT MIN(v.SellingPrice) FROM Products.ProductVariantTbl v
              WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1)`
         ),
         variantMaxPrice: knexRead.raw(
-          `(SELECT MAX(v.SellingPrice) FROM ProductVariantTbl v
+          `(SELECT MAX(v.SellingPrice) FROM Products.ProductVariantTbl v
              WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1)`
         ),
         imagePath: knexRead.raw(
-          `(SELECT ea.FilePath FROM EntityAttachmentsTbl ea
+          `(SELECT ea.FilePath FROM Products.EntityAttachmentsTbl ea
              WHERE ea.EntityType = 'Product' AND ea.EntityUID = p.ProductUID AND ea.OrgUID = p.OrgUID
                AND ea.IsDeleted = 0 AND ea.IsActive = 1
              ORDER BY ea.SortOrder ASC LIMIT 1)`
         ),
       })
-      .leftJoin({ c: "CategoryTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ c: "Products.CategoryTbl" }, function (this: Knex.JoinClause) {
         this.on("c.CategoryUID", "p.CategoryUID").andOn("c.OrgUID", "p.OrgUID");
       })
-      .leftJoin({ s: "ProductStockTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ s: "Products.ProductStockTbl" }, function (this: Knex.JoinClause) {
         this.on("s.ProductUID", "p.ProductUID").andOn("s.OrgUID", "p.OrgUID");
       });
   }
@@ -259,7 +259,7 @@ export class ProductsRepository {
     }
     if (filters.brand) {
       inner.andWhereRaw(
-        `EXISTS (SELECT 1 FROM ProductVariantTbl v JOIN BrandTbl b ON b.BrandUID = v.BrandUID AND b.OrgUID = v.OrgUID
+        `EXISTS (SELECT 1 FROM Products.ProductVariantTbl v JOIN Products.BrandTbl b ON b.BrandUID = v.BrandUID AND b.OrgUID = v.OrgUID
            WHERE v.ProductUID = p.ProductUID AND v.OrgUID = p.OrgUID AND v.IsDeleted = 0 AND v.IsActive = 1 AND b.BrandName = ?)`,
         [filters.brand]
       );
@@ -291,15 +291,15 @@ export class ProductsRepository {
   }
 
   async listCategories(orgUID: number): Promise<{ categoryUID: number; name: string }[]> {
-    return knexRead("CategoryTbl")
+    return knexRead("Products.CategoryTbl")
       .where({ OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
       .orderBy("Name")
       .select({ categoryUID: "CategoryUID", name: "Name" });
   }
 
   async listBrands(orgUID: number): Promise<{ brandUID: number; name: string }[]> {
-    return knexRead({ b: "BrandTbl" })
-      .join({ v: "ProductVariantTbl" }, function (this: Knex.JoinClause) {
+    return knexRead({ b: "Products.BrandTbl" })
+      .join({ v: "Products.ProductVariantTbl" }, function (this: Knex.JoinClause) {
         this.on("v.BrandUID", "b.BrandUID").andOn("v.OrgUID", "b.OrgUID");
       })
       .where({ "b.OrgUID": orgUID, "b.IsDeleted": 0, "b.IsActive": 1, "v.IsDeleted": 0, "v.IsActive": 1 })
@@ -317,11 +317,11 @@ export class ProductsRepository {
     if (!row) return null;
     const base = mapRow(row);
 
-    const variantRows: ProductVariant[] = await knexRead({ v: "ProductVariantTbl" })
-      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+    const variantRows: ProductVariant[] = await knexRead({ v: "Products.ProductVariantTbl" })
+      .leftJoin({ b: "Products.BrandTbl" }, function (this: Knex.JoinClause) {
         this.on("b.BrandUID", "v.BrandUID").andOn("b.OrgUID", "v.OrgUID");
       })
-      .leftJoin({ sz: "SizeTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ sz: "Products.SizeTbl" }, function (this: Knex.JoinClause) {
         this.on("sz.SizeUID", "v.SizeUID").andOn("sz.OrgUID", "v.OrgUID");
       })
       .where("v.ProductUID", productUID)
@@ -338,7 +338,7 @@ export class ProductsRepository {
         price: "v.SellingPrice",
       });
 
-    const imageRows: { FilePath: string }[] = await knexRead("EntityAttachmentsTbl")
+    const imageRows: { FilePath: string }[] = await knexRead("Products.EntityAttachmentsTbl")
       .where({ EntityType: "Product", EntityUID: productUID, OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
       .orderBy("SortOrder", "asc")
       .select("FilePath");
@@ -351,11 +351,11 @@ export class ProductsRepository {
   }
 
   async getVariantById(orgUID: number, productUID: number, variantUID: number): Promise<ProductVariant | null> {
-    const row: ProductVariant | undefined = await knexRead({ v: "ProductVariantTbl" })
-      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+    const row: ProductVariant | undefined = await knexRead({ v: "Products.ProductVariantTbl" })
+      .leftJoin({ b: "Products.BrandTbl" }, function (this: Knex.JoinClause) {
         this.on("b.BrandUID", "v.BrandUID").andOn("b.OrgUID", "v.OrgUID");
       })
-      .leftJoin({ sz: "SizeTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ sz: "Products.SizeTbl" }, function (this: Knex.JoinClause) {
         this.on("sz.SizeUID", "v.SizeUID").andOn("sz.OrgUID", "v.OrgUID");
       })
       .where({
@@ -379,7 +379,7 @@ export class ProductsRepository {
   }
 
   async hasActiveVariants(orgUID: number, productUID: number): Promise<boolean> {
-    const row = await knexRead("ProductVariantTbl")
+    const row = await knexRead("Products.ProductVariantTbl")
       .where({ ProductUID: productUID, OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
       .first(knexRead.raw("1 as one"));
     return row !== undefined;
@@ -387,7 +387,7 @@ export class ProductsRepository {
 
   async createProduct(orgUID: number, input: CreateProductInput): Promise<ProductDetail> {
     const prodToken = crypto.randomUUID();
-    const [productUID] = await knexWrite("ProductTbl").insert({
+    const [productUID] = await knexWrite("Products.ProductTbl").insert({
       OrgUID: orgUID,
       ProdToken: prodToken,
       ItemName: input.name,
@@ -403,7 +403,7 @@ export class ProductsRepository {
       IGST: 0,
     });
 
-    await knexWrite("ProductStockTbl").insert({ ProductUID: productUID, OrgUID: orgUID, AvailableQty: input.stock });
+    await knexWrite("Products.ProductStockTbl").insert({ ProductUID: productUID, OrgUID: orgUID, AvailableQty: input.stock });
 
     const created = await this.getProductById(orgUID, productUID);
     if (!created) throw new Error("Failed to load created product");
@@ -425,11 +425,11 @@ export class ProductsRepository {
     if (input.categoryUID !== undefined) updateData.CategoryUID = input.categoryUID;
 
     if (Object.keys(updateData).length > 0) {
-      await knexWrite("ProductTbl").where({ ProductUID: productUID, OrgUID: orgUID }).update(updateData);
+      await knexWrite("Products.ProductTbl").where({ ProductUID: productUID, OrgUID: orgUID }).update(updateData);
     }
 
     if (input.stock !== undefined) {
-      await knexWrite("ProductStockTbl")
+      await knexWrite("Products.ProductStockTbl")
         .insert({ ProductUID: productUID, OrgUID: orgUID, AvailableQty: input.stock })
         .onConflict(["ProductUID", "OrgUID"])
         .merge({ AvailableQty: input.stock });
@@ -439,20 +439,20 @@ export class ProductsRepository {
   }
 
   async deleteProduct(orgUID: number, productUID: number): Promise<boolean> {
-    const affectedRows = await knexWrite("ProductTbl")
+    const affectedRows = await knexWrite("Products.ProductTbl")
       .where({ ProductUID: productUID, OrgUID: orgUID, IsDeleted: 0 })
       .update({ IsDeleted: 1 });
     return affectedRows > 0;
   }
 
   async decrementStock(orgUID: number, productUID: number, quantity: number): Promise<void> {
-    await knexWrite("ProductStockTbl")
+    await knexWrite("Products.ProductStockTbl")
       .where({ ProductUID: productUID, OrgUID: orgUID })
       .decrement("AvailableQty", quantity);
   }
 
   async getProductFullDetail(orgUID: number, productUID: number): Promise<ProductFullDetail | null> {
-    const row = await knexRead<Omit<ProductFullDetail, "variants" | "brandStock" | "images">>({ p: "ProductTbl" })
+    const row = await knexRead<Omit<ProductFullDetail, "variants" | "brandStock" | "images">>({ p: "Products.ProductTbl" })
       .select({
         productUID: "p.ProductUID",
         orgUID: "p.OrgUID",
@@ -508,11 +508,11 @@ export class ProductsRepository {
         updatedOn: "p.UpdatedOn",
         stock: knexRead.raw("COALESCE(s.AvailableQty, 0)"),
       })
-      .leftJoin({ c: "CategoryTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ c: "Products.CategoryTbl" }, function (this: Knex.JoinClause) {
         this.on("c.CategoryUID", "p.CategoryUID").andOn("c.OrgUID", "p.OrgUID");
       })
-      .leftJoin({ st: "StorageTbl" }, "st.StorageUID", "p.StorageUID")
-      .leftJoin({ s: "ProductStockTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ st: "Products.StorageTbl" }, "st.StorageUID", "p.StorageUID")
+      .leftJoin({ s: "Products.ProductStockTbl" }, function (this: Knex.JoinClause) {
         this.on("s.ProductUID", "p.ProductUID").andOn("s.OrgUID", "p.OrgUID");
       })
       .leftJoin({ td: "Global.TaxDetailsTbl" }, "td.TaxDetailsUID", "p.TaxDetailsUID")
@@ -527,7 +527,7 @@ export class ProductsRepository {
 
     if (!row) return null;
 
-    const variantRows = await knexRead<ProductFullVariant>({ v: "ProductVariantTbl" })
+    const variantRows = await knexRead<ProductFullVariant>({ v: "Products.ProductVariantTbl" })
       .select({
         variantUID: "v.VariantUID",
         brandUID: "v.BrandUID",
@@ -548,20 +548,20 @@ export class ProductsRepository {
         createdOn: "v.CreatedOn",
         updatedOn: "v.UpdatedOn",
       })
-      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ b: "Products.BrandTbl" }, function (this: Knex.JoinClause) {
         this.on("b.BrandUID", "v.BrandUID").andOn("b.OrgUID", "v.OrgUID");
       })
-      .leftJoin({ sz: "SizeTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ sz: "Products.SizeTbl" }, function (this: Knex.JoinClause) {
         this.on("sz.SizeUID", "v.SizeUID").andOn("sz.OrgUID", "v.OrgUID");
       })
-      .leftJoin({ vs: "ProductVariantStockTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ vs: "Products.ProductVariantStockTbl" }, function (this: Knex.JoinClause) {
         this.on("vs.VariantUID", "v.VariantUID").andOn("vs.OrgUID", "v.OrgUID");
       })
       .where("v.ProductUID", productUID)
       .andWhere("v.OrgUID", orgUID)
       .andWhere("v.IsDeleted", 0);
 
-    const brandStockRows = await knexRead<ProductBrandStock>({ bs: "ProductBrandStockTbl" })
+    const brandStockRows = await knexRead<ProductBrandStock>({ bs: "Products.ProductBrandStockTbl" })
       .select({
         brandUID: "bs.BrandUID",
         brand: "b.BrandName",
@@ -569,7 +569,7 @@ export class ProductsRepository {
         availableQty: "bs.AvailableQty",
         updatedOn: "bs.UpdatedOn",
       })
-      .leftJoin({ b: "BrandTbl" }, function (this: Knex.JoinClause) {
+      .leftJoin({ b: "Products.BrandTbl" }, function (this: Knex.JoinClause) {
         this.on("b.BrandUID", "bs.BrandUID").andOn("b.OrgUID", "bs.OrgUID");
       })
       .where("bs.ProductUID", productUID)
@@ -584,7 +584,7 @@ export class ProductsRepository {
       isActive: boolean;
       createdOn: Date;
       updatedOn: Date;
-    }[] = await knexRead("EntityAttachmentsTbl")
+    }[] = await knexRead("Products.EntityAttachmentsTbl")
       .where({ EntityType: "Product", EntityUID: productUID, OrgUID: orgUID, IsDeleted: 0 })
       .orderBy("SortOrder", "asc")
       .select({

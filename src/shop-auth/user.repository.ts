@@ -49,17 +49,17 @@ export interface CreateUserInput {
 @Injectable()
 export class UserRepository {
   async findByEmail(email: string): Promise<UserRecord | null> {
-    const row = await knexRead<UserTblRow>("UserTbl").where({ Email: email }).first();
+    const row = await knexRead<UserTblRow>("Products.UserTbl").where({ Email: email }).first();
     return row ? mapRow(row) : null;
   }
 
   async findById(userUID: number): Promise<UserRecord | null> {
-    const row = await knexRead<UserTblRow>("UserTbl").where({ UserUID: userUID }).first();
+    const row = await knexRead<UserTblRow>("Products.UserTbl").where({ UserUID: userUID }).first();
     return row ? mapRow(row) : null;
   }
 
   async create(input: CreateUserInput): Promise<UserRecord> {
-    const [userUID] = await knexWrite<UserTblRow>("UserTbl").insert({
+    const [userUID] = await knexWrite<UserTblRow>("Products.UserTbl").insert({
       OrgUID: input.orgUID,
       Name: input.name,
       Email: input.email,

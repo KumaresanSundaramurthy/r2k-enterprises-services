@@ -28,14 +28,8 @@ export async function createApp(): Promise<NestExpressApplication> {
     .setVersion("1.0.0")
     .addBearerAuth();
 
-  // First (default) server is relative, so "Try it out" always calls the host the docs page was loaded from.
-  // VERCEL_URL is deliberately not used: it is a per-deployment host, which the browser treats as another origin.
-  swaggerConfigBuilder.addServer("/", "This server");
-  const deployedUrl = process.env.API_BASE_URL || process.env.RENDER_EXTERNAL_URL;
-  if (deployedUrl) {
-    swaggerConfigBuilder.addServer(deployedUrl, "Deployed server");
-  }
-  swaggerConfigBuilder.addServer(`http://localhost:${process.env.PORT || 5000}`, "Local server");
+  // No servers listed: OpenAPI then defaults to the host the docs page was loaded from (Vercel or localhost),
+  // and Swagger UI hides the Servers dropdown.
 
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfigBuilder.build());
   SwaggerModule.setup("api-docs", app, swaggerDocument, {

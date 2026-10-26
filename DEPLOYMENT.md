@@ -1,7 +1,7 @@
 # Deploying r2k-enterprises-services
 
 ## 1. Database — MySQL
-Auth, cart and orders are stored in the same MySQL database as the product catalog (see `sql/schema.sql`). Run that script against `MYSQL_DATABASE` before deploying this version of the service — it creates `UserTbl`, `CartTbl` and `OrderTbl`.
+The connection selects no default database: every query names its schema (`Products.ProductTbl`, `Users.UserTbl`, ...). The shop tables (`Products.UserTbl`, `Products.CartTbl`, `Products.OrderTbl`) are created by `sql/schema.sql` — run it before using the shop endpoints.
 
 ## 2. Backend — Render (or Railway)
 This repo includes a `Dockerfile` and a `render.yaml` blueprint.
@@ -28,8 +28,6 @@ This repo includes a `Dockerfile` and a `render.yaml` blueprint.
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | From your Razorpay dashboard — use live keys (`rzp_live_...`) only once you've completed Razorpay's KYC/activation; test keys (`rzp_test_...`) work fine for a staging deploy |
 | `READ_DB_HOSTNAME` / `WRITE_DB_HOSTNAME` | MySQL hostnames for the product catalog (ERP database) |
 | `DB_PORT` / `DB_USERNAME` / `DB_PASSWORD` | MySQL credentials |
-| `MYSQL_DATABASE` | `Products` |
-| `DEFAULT_ORG_UID` | OrgUID assigned to new users at registration |
 | `ASSET_BASE_URL` | Base URL that serves product image files (prefixed onto stored relative paths) |
 
 ### ERP login (`/api/auth/*`)

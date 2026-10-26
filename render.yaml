@@ -26,10 +26,6 @@ services:
         sync: false
       - key: DB_PASSWORD
         sync: false
-      - key: MYSQL_DATABASE
-        sync: false
-      - key: DEFAULT_ORG_UID
-        sync: false
       - key: ASSET_BASE_URL
         sync: false
       - key: JWT_COOKIE_NAME

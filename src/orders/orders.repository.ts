@@ -94,7 +94,7 @@ export interface CreateOrderInput {
 @Injectable()
 export class OrdersRepository {
   async createOrder(input: CreateOrderInput): Promise<OrderRecord> {
-    const [orderUID] = await knexWrite<OrderTblRow>("OrderTbl").insert({
+    const [orderUID] = await knexWrite<OrderTblRow>("Products.OrderTbl").insert({
       UserUID: input.userUID,
       OrgUID: input.orgUID,
       Items: JSON.stringify(input.items) as unknown as OrderItem[],
@@ -111,24 +111,24 @@ export class OrdersRepository {
   }
 
   async findOrderById(orderUID: number): Promise<OrderRecord | null> {
-    const row = await knexRead<OrderTblRow>("OrderTbl").where({ OrderUID: orderUID }).first();
+    const row = await knexRead<OrderTblRow>("Products.OrderTbl").where({ OrderUID: orderUID }).first();
     return row ? mapRow(row) : null;
   }
 
   async findOrderByIdForUser(orderUID: number, userUID: number): Promise<OrderRecord | null> {
-    const row = await knexRead<OrderTblRow>("OrderTbl").where({ OrderUID: orderUID, UserUID: userUID }).first();
+    const row = await knexRead<OrderTblRow>("Products.OrderTbl").where({ OrderUID: orderUID, UserUID: userUID }).first();
     return row ? mapRow(row) : null;
   }
 
   async findOrdersByUser(userUID: number): Promise<OrderRecord[]> {
-    const rows = await knexRead<OrderTblRow>("OrderTbl").where({ UserUID: userUID }).orderBy("CreatedOn", "desc");
+    const rows = await knexRead<OrderTblRow>("Products.OrderTbl").where({ UserUID: userUID }).orderBy("CreatedOn", "desc");
     return rows.map(mapRow);
   }
 
   async findAllOrders(status?: OrderStatus): Promise<OrderRecord[]> {
-    const query = knexRead<OrderTblRow>({ o: "OrderTbl" })
+    const query = knexRead<OrderTblRow>({ o: "Products.OrderTbl" })
       .select("o.*", { userName: "u.Name", userEmail: "u.Email" })
-      .leftJoin({ u: "UserTbl" }, "u.UserUID", "o.UserUID")
+      .leftJoin({ u: "Products.UserTbl" }, "u.UserUID", "o.UserUID")
       .orderBy("o.CreatedOn", "desc");
 
     if (status) {
@@ -140,7 +140,7 @@ export class OrdersRepository {
   }
 
   async updateOrderStatus(orderUID: number, status: OrderStatus): Promise<OrderRecord | null> {
-    await knexWrite("OrderTbl").where({ OrderUID: orderUID }).update({ Status: status });
+    await knexWrite("Products.OrderTbl").where({ OrderUID: orderUID }).update({ Status: status });
     return this.findOrderById(orderUID);
   }
 }

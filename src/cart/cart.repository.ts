@@ -41,19 +41,19 @@ function mapRow(row: CartTblRow): CartRecord {
 @Injectable()
 export class CartRepository {
   async getCartByUser(userUID: number): Promise<CartRecord | null> {
-    const row = await knexRead<CartTblRow>("CartTbl").where({ UserUID: userUID }).first();
+    const row = await knexRead<CartTblRow>("Products.CartTbl").where({ UserUID: userUID }).first();
     return row ? mapRow(row) : null;
   }
 
   async createCart(userUID: number): Promise<CartRecord> {
-    await knexWrite<CartTblRow>("CartTbl").insert({ UserUID: userUID, Items: JSON.stringify([]) as unknown as CartItem[] });
+    await knexWrite<CartTblRow>("Products.CartTbl").insert({ UserUID: userUID, Items: JSON.stringify([]) as unknown as CartItem[] });
     const cart = await this.getCartByUser(userUID);
     if (!cart) throw new Error("Failed to load created cart");
     return cart;
   }
 
   async saveCartItems(userUID: number, items: CartItem[]): Promise<void> {
-    await knexWrite<CartTblRow>("CartTbl")
+    await knexWrite<CartTblRow>("Products.CartTbl")
       .where({ UserUID: userUID })
       .update({ Items: JSON.stringify(items) as unknown as CartItem[] });
   }
