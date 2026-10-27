@@ -15,7 +15,9 @@ export async function createApp(): Promise<NestExpressApplication> {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  app.enableCors({ origin: allowedOrigins.length > 0 ? allowedOrigins : undefined, credentials: true });
+  // CLIENT_URL="*" allows any origin (the request's origin is echoed back, so cookies/credentials also work)
+  const origin = allowedOrigins.includes("*") ? true : allowedOrigins.length > 0 ? allowedOrigins : undefined;
+  app.enableCors({ origin, credentials: true });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
