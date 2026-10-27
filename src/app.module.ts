@@ -8,11 +8,17 @@ import { ProductsModule } from "./products/products.module";
 import { CartModule } from "./cart/cart.module";
 import { OrdersModule } from "./orders/orders.module";
 import { PaymentsModule } from "./payments/payments.module";
+import { CoreModule } from "./core/core.module";
+import { LibrariesModule } from "./libraries/libraries.module";
+import { CustomersModule } from "./modules/customers/customers.module";
 
 @Module({
   imports: [
+    CoreModule,
+    LibrariesModule,
     RedisModule,
     MailModule,
+    CustomersModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

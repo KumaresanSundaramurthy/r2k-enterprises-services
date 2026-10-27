@@ -21,6 +21,12 @@ export function toInt(value: unknown, fallback = 0): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+// PHP round(): halves round away from zero (Math.round rounds -0.5 towards zero).
+export function phpRound(value: number, decimals = 0): number {
+  const factor = 10 ** decimals;
+  return (Math.sign(value) * Math.round(Math.abs(value) * factor + Number.EPSILON)) / factor;
+}
+
 // PHP's (int)(bool)$value: "0", "", null and the BIT(0) byte are false; anything else is true.
 export function phpBool(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -52,6 +58,68 @@ export function resolveCdnUrl(path: string | null | undefined): string {
   if (/^https?:\/\//i.test(path)) return path;
   const cdn = process.env.FILE_UPLOAD === "amazonaws" ? process.env.CDN_URL : process.env.CFLARE_R2_CDN;
   return `${(cdn || "").replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// PHP date($format) for the format characters the CI3 settings use, in the given IANA timezone.
+export function phpDate(format: string, date: Date, timeZone = "UTC"): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      weekday: "long",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value])
+  );
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  const hour = Number(parts.hour);
+  const hour12 = hour % 12 || 12;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const tokens: Record<string, string> = {
+    d: pad(day),
+    j: String(day),
+    D: parts.weekday.slice(0, 3),
+    l: parts.weekday,
+    N: String(WEEKDAYS.indexOf(parts.weekday) || 7),
+    m: pad(month),
+    n: String(month),
+    M: MONTHS[month - 1].slice(0, 3),
+    F: MONTHS[month - 1],
+    Y: String(year),
+    y: pad(year % 100),
+    H: pad(hour),
+    G: String(hour),
+    h: pad(hour12),
+    g: String(hour12),
+    i: parts.minute,
+    s: parts.second,
+    A: hour < 12 ? "AM" : "PM",
+    a: hour < 12 ? "am" : "pm",
+  };
+  let out = "";
+  for (let i = 0; i < format.length; i++) {
+    const ch = format[i];
+    if (ch === "\\" && i + 1 < format.length) out += format[++i];
+    else out += tokens[ch] ?? ch;
+  }
+  return out;
+}
+
+// CI3 smartDecimal(): up to 9 decimals with trailing zeros (and a trailing point) removed.
+export function smartDecimal(value: unknown, maxDecimals = 9): string {
+  const formatted = (Number(value) || 0).toFixed(maxDecimals);
+  return maxDecimals > 0 ? formatted.replace(/0+$/, "").replace(/\.$/, "") : formatted;
 }
 
 export function escapeHtml(value: string): string {
