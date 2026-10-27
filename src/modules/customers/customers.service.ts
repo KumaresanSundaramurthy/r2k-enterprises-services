@@ -4,7 +4,7 @@ import { CiValidationError } from "../../core/response/ci-response";
 import { CreditSettingsService } from "../../libraries/credit-settings/credit-settings.service";
 import { currentFinancialYear, financialYearStartDate, monthStartDate } from "../../core/utils/financial-year";
 import { AMOUNT_DECIMALS, BALANCE_FY_START_MONTH } from "../../core/constants";
-import { phpRound } from "../../common/utils/php-compat";
+import { phpRound, resolveCdnUrl } from "../../common/utils/php-compat";
 import { CustomerBalanceService } from "../../libraries/customer-balance/customer-balance.service";
 import { CustomerListDto, CustomerSearchListDto, SearchCustomersDto } from "./dto/customer-list.dto";
 import { CustomerBalanceDto, CustomerOpeningBalanceDto } from "./dto/customer-balance.dto";
@@ -25,7 +25,9 @@ export class CustomersService {
     const rowLimit = await this.orgSettings.resolveRowLimit(orgUID, dto.RowLimit);
     const page = Math.max(1, pageNo);
     const result = await this.customers.listPaginated(orgUID, page, rowLimit, dto.Filter ?? {}, dto.langCode);
-    return { Data: result.rows, TotalCount: result.totalCount, PageNo: page, RowLimit: rowLimit };
+    // Image as a full CDN URL (CI3's list view prefixed it the same way)
+    const rows = result.rows.map((row) => (row.Image ? { ...row, Image: resolveCdnUrl(row.Image as string) } : row));
+    return { Data: rows, TotalCount: result.totalCount, PageNo: page, RowLimit: rowLimit };
   }
 
   // searchCustomers — Select2 typeahead: { id, text } where text is "Name (Area)".
