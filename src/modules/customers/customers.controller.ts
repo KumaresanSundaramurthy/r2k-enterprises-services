@@ -58,8 +58,7 @@ export class CustomersController {
     private readonly customerAttachments: CustomerAttachmentService
   ) {}
 
-  @Post("getCustomersPageDetails/:pageNo")
-  @HttpCode(HttpStatus.OK)
+  @Get("getCustomersPageDetails/:pageNo")
   @ApiParam({ name: "pageNo", description: "1-based page number (0 or invalid = 1)" })
   @ApiOperation({ summary: "Customer list page (Data, TotalCount, PageNo, RowLimit)" })
   // Argument order sets the Swagger parameter order: orgId, pageNo, RowLimit, Filter, langCode
