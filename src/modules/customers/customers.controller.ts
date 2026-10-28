@@ -85,17 +85,15 @@ export class CustomersController {
     return ciSuccess(await this.customersService.getDetail(dto.orgId, Number(uid), dto.langCode));
   }
 
-  @Post("getCustomerTags")
-  @HttpCode(HttpStatus.OK)
+  @Get("getCustomerTags")
   @ApiOperation({ summary: "Distinct tags used by the organisation's active customers" })
-  async getCustomerTags(@Body() dto: OrgContextDto) {
+  async getCustomerTags(@Query() dto: OrgContextDto) {
     return ciSuccess(await this.customersService.getTags(dto.orgId));
   }
 
-  @Post("getCustomerStats")
-  @HttpCode(HttpStatus.OK)
+  @Get("getCustomerStats")
   @ApiOperation({ summary: "List page counters: totals, this month / FY, to collect, to pay" })
-  async getCustomerStats(@Body() dto: OrgContextDto) {
+  async getCustomerStats(@Query() dto: OrgContextDto) {
     return ciSuccess(await this.customersService.getStats(dto.orgId));
   }
 

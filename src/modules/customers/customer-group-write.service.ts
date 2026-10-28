@@ -213,7 +213,7 @@ export class CustomerGroupWriteService {
   // The groups page shown after delete / status change (CI3 returned it rendered; here as data)
   private async pageAfterChange(dto: GroupIdDto, orgUID: number) {
     const pageNo = postInt(dto, "PageNo") || 1;
-    const { Data, TotalCount, PageNo, RowLimit, Stats } = await this.groupsRead.getPage(pageNo, { orgId: orgUID, langCode: "en" });
+    const { Data, TotalCount, PageNo, RowLimit, Stats } = await this.groupsRead.getPage(orgUID, pageNo, { langCode: "en" });
     return { Data, TotalCount, PageNo, RowLimit, Stats };
   }
 }

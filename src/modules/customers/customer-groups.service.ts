@@ -17,12 +17,12 @@ export class CustomerGroupsService {
   ) {}
 
   // getGroupsData — one page of groups plus the groups tab counters.
-  async getPage(pageNo: number, dto: GroupListDto) {
-    const rowLimit = await this.orgSettings.resolveRowLimit(dto.orgId, dto.RowLimit);
+  async getPage(orgUID: number, pageNo: number, dto: GroupListDto) {
+    const rowLimit = await this.orgSettings.resolveRowLimit(orgUID, dto.RowLimit);
     const page = Math.max(1, pageNo);
     const [result, stats] = await Promise.all([
-      this.groups.listPaginated(dto.orgId, page, rowLimit, dto.Filter ?? {}, dto.langCode),
-      this.groups.stats(dto.orgId),
+      this.groups.listPaginated(orgUID, page, rowLimit, dto.Filter ?? {}, dto.langCode),
+      this.groups.stats(orgUID),
     ]);
     return { Data: result.rows, TotalCount: result.totalCount, PageNo: page, RowLimit: rowLimit, Stats: stats };
   }

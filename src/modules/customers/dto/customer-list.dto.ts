@@ -1,8 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { plainToInstance, Transform, Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import { IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, ValidateNested } from "class-validator";
 import { OrgLangContextDto } from "../../../core/dto/org-context.dto";
-import { toArray } from "../../../core/dto/transforms";
+import { toArray, toJsonObject } from "../../../core/dto/transforms";
 import { EXPORT_TYPES, ExportType } from "../../../libraries/export/export.service";
 
 // Filter keys are the same as the CI3 list page posts (Filter[...]).
@@ -65,20 +65,6 @@ export class CustomerListFilterDto {
   BalanceSorting?: number;
 }
 
-// Filter sent as a JSON string in the query (or already an object) → CustomerListFilterDto; invalid JSON is left as is and fails validation
-const toListFilter = ({ value }: { value: unknown }) => {
-  if (value === undefined || value === null || value === "") return undefined;
-  let raw = value;
-  if (typeof value === "string") {
-    try {
-      raw = JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return raw && typeof raw === "object" ? plainToInstance(CustomerListFilterDto, raw) : value;
-};
-
 // getCustomersPageDetails query parameters after orgId (OrgContextDto) and the path's pageNo
 export class CustomerListDto {
   @ApiPropertyOptional({ type: Number, description: "Rows per page; defaults to the organisation's RowLimit setting" })
@@ -96,7 +82,7 @@ export class CustomerListDto {
       "IsActive (0 / 1), NameSorting, AreaSorting, BalanceSorting",
   })
   @IsOptional()
-  @Transform(toListFilter)
+  @Transform(toJsonObject(CustomerListFilterDto))
   @ValidateNested()
   Filter?: CustomerListFilterDto;
 

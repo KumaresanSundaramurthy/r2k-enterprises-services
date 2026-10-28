@@ -4,7 +4,7 @@ import { writeContext } from "../../core/request/write-context";
 import { CustomerGroupWriteService } from "./customer-group-write.service";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
-import { OrgLangContextDto } from "../../core/dto/org-context.dto";
+import { OrgContextDto, OrgLangContextDto } from "../../core/dto/org-context.dto";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { GroupFormDto, GroupIdDto, GroupListDto, GroupStatusDto } from "./dto/customer-group.dto";
@@ -22,12 +22,12 @@ export class CustomerGroupsController {
     private readonly groupWrite: CustomerGroupWriteService
   ) {}
 
-  @Post("getGroupsData/:pageNo")
-  @HttpCode(HttpStatus.OK)
+  @Get("getGroupsData/:pageNo")
   @ApiParam({ name: "pageNo", description: "1-based page number (0 or invalid = 1)" })
   @ApiOperation({ summary: "Customer group list page (Data, TotalCount, PageNo, RowLimit, Stats)" })
-  async getGroupsData(@Param("pageNo") pageNo: string, @Body() dto: GroupListDto) {
-    return ciSuccess(await this.groupsService.getPage(Number(pageNo) || 1, dto));
+  // Argument order sets the Swagger parameter order: orgId, pageNo, RowLimit, Filter, langCode
+  async getGroupsData(@Query() org: OrgContextDto, @Param("pageNo") pageNo: string, @Query() dto: GroupListDto) {
+    return ciSuccess(await this.groupsService.getPage(org.orgId, Number(pageNo) || 1, dto));
   }
 
   @Get("getGroupForModal/:groupUID")
@@ -48,10 +48,9 @@ export class CustomerGroupsController {
     return ciSuccess(await this.groupsService.getOutstanding(dto.orgId, Number(groupUID), dto.langCode));
   }
 
-  @Post("getGroupsForDropdown")
-  @HttpCode(HttpStatus.OK)
+  @Get("getGroupsForDropdown")
   @ApiOperation({ summary: "Active groups for the customer form dropdown (also refreshes the Upstash cache)" })
-  async getGroupsForDropdown(@Body() dto: OrgLangContextDto) {
+  async getGroupsForDropdown(@Query() dto: OrgLangContextDto) {
     return ciSuccess(await this.groupsService.getForDropdown(dto.orgId, dto.langCode));
   }
 
@@ -90,8 +89,7 @@ export class CustomerGroupsController {
     return ciSuccess(await this.groupWrite.setStatus(dto, writeContext(dto, req)));
   }
 
-  @Post("getGroupTypes")
-  @HttpCode(HttpStatus.OK)
+  @Get("getGroupTypes")
   @ApiOperation({ summary: "Group type names (global list)" })
   async getGroupTypes() {
     return ciSuccess(await this.groupsService.getGroupTypes());

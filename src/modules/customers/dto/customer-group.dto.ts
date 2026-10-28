@@ -1,9 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
-import { Allow, IsArray, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from "class-validator";
-import { OrgPagedListDto } from "../../../core/dto/org-context.dto";
+import { Allow, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, ValidateNested } from "class-validator";
 import { OrgUserContextDto } from "../../../core/dto/write-context.dto";
-import { toArray, toOptionalNumber } from "../../../core/dto/transforms";
+import { toArray, toJsonObject, toOptionalNumber } from "../../../core/dto/transforms";
 
 // Filter keys are the same as the CI3 groups tab posts (Filter[...]).
 export class GroupListFilterDto {
@@ -33,12 +32,29 @@ export class GroupListFilterDto {
   CustomerUID?: number;
 }
 
-export class GroupListDto extends OrgPagedListDto {
-  @ApiPropertyOptional({ type: GroupListFilterDto })
+// getGroupsData query parameters after orgId (OrgContextDto) and the path's pageNo
+export class GroupListDto {
+  @ApiPropertyOptional({ type: Number, description: "Rows per page; defaults to the organisation's RowLimit setting" })
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  RowLimit?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: "List filter as JSON: SearchAllData, IsActive (0 / 1), GroupType[], CustomerUID",
+  })
+  @IsOptional()
+  @Transform(toJsonObject(GroupListFilterDto))
   @ValidateNested()
-  @Type(() => GroupListFilterDto)
   Filter?: GroupListFilterDto;
+
+  @ApiPropertyOptional({ example: "en", description: "UI language code; 'en' (default) returns the base text" })
+  @IsOptional()
+  @Matches(/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/, { message: "langCode must be a language code such as 'en' or 'ta'" })
+  langCode: string = "en";
 }
 
 // The CI3 group form, field for field. Values are checked by the service so messages match CI3.
