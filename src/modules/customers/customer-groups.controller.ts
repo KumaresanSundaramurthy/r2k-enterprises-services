@@ -82,10 +82,9 @@ export class CustomerGroupsController {
     return ciSuccess(await this.groupWrite.delete(dto, writeContext(dto, req)));
   }
 
-  @Post("toggleGroupStatus")
-  @HttpCode(HttpStatus.OK)
+  @Get("toggleGroupStatus")
   @ApiOperation({ summary: "Activate / deactivate a group; returns the groups page (Data, TotalCount, Stats)" })
-  async toggleGroupStatus(@Body() dto: GroupStatusDto, @Req() req: Request) {
+  async toggleGroupStatus(@Query() dto: GroupStatusDto, @Req() req: Request) {
     return ciSuccess(await this.groupWrite.setStatus(dto, writeContext(dto, req)));
   }
 
