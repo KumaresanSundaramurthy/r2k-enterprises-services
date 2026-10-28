@@ -27,14 +27,16 @@ export class CustomerGroupsService {
     return { Data: result.rows, TotalCount: result.totalCount, PageNo: page, RowLimit: rowLimit, Stats: stats };
   }
 
-  // getGroupForModal — group, its members and the type list for the edit form.
+  // getGroupStats — groups tab counters (CI3 index() rendered these server-side).
+  async getStats(orgUID: number) {
+    return { Data: await this.groups.stats(orgUID) };
+  }
+
+  // getGroupForModal — group and its members for the edit form (group types come from getGroupTypes).
   async getForModal(orgUID: number, groupUID: number, langCode: string) {
     const group = await this.requireGroup(orgUID, groupUID);
-    const [members, groupTypes] = await Promise.all([
-      this.groups.findMembersWithBalance(orgUID, groupUID, langCode),
-      this.groups.findGroupTypes(GROUP_TYPE_MODULE),
-    ]);
-    return { Data: group, Members: members, GroupTypes: groupTypes };
+    const members = await this.groups.findMembersWithBalance(orgUID, groupUID, langCode);
+    return { Data: group, Members: members };
   }
 
   // getGroupDetail — group, its members and the combined overview.

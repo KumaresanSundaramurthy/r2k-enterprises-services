@@ -30,8 +30,14 @@ export class CustomerGroupsController {
     return ciSuccess(await this.groupsService.getPage(org.orgId, Number(pageNo) || 1, dto));
   }
 
+  @Get("getGroupStats")
+  @ApiOperation({ summary: "Groups tab counters: total, active, inactive, members" })
+  async getGroupStats(@Query() dto: OrgContextDto) {
+    return ciSuccess(await this.groupsService.getStats(dto.orgId));
+  }
+
   @Get("getGroupForModal/:groupUID")
-  @ApiOperation({ summary: "Group with members and group types (edit form)" })
+  @ApiOperation({ summary: "Group with members (edit form)" })
   async getGroupForModal(@Param("groupUID") groupUID: string, @Query() dto: OrgLangContextDto) {
     return ciSuccess(await this.groupsService.getForModal(dto.orgId, Number(groupUID), dto.langCode));
   }
