@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { AppController } from "./app.controller";
+import { AppController, PingController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { ShopAuthModule } from "./shop-auth/shop-auth.module";
 import { RedisModule } from "./common/redis/redis.module";
@@ -26,6 +26,6 @@ import { CustomersModule } from "./modules/customers/customers.module";
     OrdersModule,
     PaymentsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, PingController],
 })
 export class AppModule {}
