@@ -2,6 +2,9 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, R
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Request, Response } from "express";
 import { writeContext } from "../../core/request/write-context";
+import { postIntList, postString } from "../../core/utils/form-values";
+import { CommunicationDto } from "../../libraries/communication/communication.dto";
+import { CommunicationService } from "../../libraries/communication/communication.service";
 import { CustomerFormDto } from "./dto/customer-form.dto";
 import {
   ApplyOnAccountDto,
@@ -55,7 +58,8 @@ export class CustomersController {
     private readonly customerProfile: CustomerProfileService,
     private readonly customerCache: CustomerCacheService,
     private readonly customerExport: CustomerExportService,
-    private readonly customerAttachments: CustomerAttachmentService
+    private readonly customerAttachments: CustomerAttachmentService,
+    private readonly communication: CommunicationService
   ) {}
 
   @Get("getCustomersPageDetails/:pageNo")
@@ -236,6 +240,31 @@ export class CustomersController {
   @ApiOperation({ summary: "Rebuild the Upstash customers cache from every active customer (Message, Count)" })
   async syncCustomersCache(@Body() dto: OrgContextDto) {
     return ciSuccess(await this.customerCache.syncAll(dto.orgId));
+  }
+
+  @Post("sendCommunication")
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: "Attachments[]", maxCount: 10 },
+      { name: "Attachments", maxCount: 10 },
+    ])
+  )
+  @ApiConsumes("application/json", "multipart/form-data")
+  @ApiOperation({
+    summary: "Send an SMS or email to selected customers (Message, Sent, Failed)",
+    description: "Email takes up to 3 attachments (pdf / jpg / jpeg / png) as Attachments[]. Each attempt is logged in Security.CommunicationLogTbl.",
+  })
+  async sendCommunication(@Body() dto: CommunicationDto, @UploadedFiles() files: AttachFileFields) {
+    return ciSuccess(
+      await this.communication.send(dto.orgId, dto.userId, "Customer", {
+        commType: postString(dto, "CommType") ?? "",
+        message: postString(dto, "Message") ?? "",
+        subject: postString(dto, "Subject") ?? "",
+        uids: postIntList(dto, "UIDs"),
+        files: [...(files?.["Attachments[]"] ?? []), ...(files?.Attachments ?? [])],
+      })
+    );
   }
 
   @Get("getCustomerProfileTab/:uid/:tab")

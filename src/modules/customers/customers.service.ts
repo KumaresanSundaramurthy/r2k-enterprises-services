@@ -78,7 +78,8 @@ export class CustomersService {
       throw new CiValidationError("Customer not found.");
     }
     return {
-      Data: customer,
+      // Image as a full CDN URL, the same as the list
+      Data: customer.Image ? { ...customer, Image: resolveCdnUrl(customer.Image as string) } : customer,
       BankDetails: bankDetails,
       BillingAddr: addresses.find((address) => address.AddressType === "Billing") ?? null,
       ShippingAddr: addresses.find((address) => address.AddressType === "Shipping") ?? null,

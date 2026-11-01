@@ -3,6 +3,9 @@ import { AccountLedgerRepository } from "./account-ledger/account-ledger.reposit
 import { AccountLedgerService } from "./account-ledger/account-ledger.service";
 import { AuditLogService } from "./audit-log/audit-log.service";
 import { CacheHelperService } from "./cache-helper/cache-helper.service";
+import { CommunicationRepository } from "./communication/communication.repository";
+import { CommunicationService } from "./communication/communication.service";
+import { SmsService } from "./communication/sms.service";
 import { CreditSettingsService } from "./credit-settings/credit-settings.service";
 import { CurlService } from "./curl/curl.service";
 import { CustomerBalanceRepository } from "./customer-balance/customer-balance.repository";
@@ -25,12 +28,14 @@ const services = [
   TransactionPaymentService,
   ExportService,
   FileUploadService,
+  SmsService,
+  CommunicationService,
 ];
 
 // Reusable services (CI3's application/libraries). Each one is injected wherever it is needed.
 @Global()
 @Module({
-  providers: [...services, CustomerBalanceRepository, AccountLedgerRepository],
+  providers: [...services, CustomerBalanceRepository, AccountLedgerRepository, CommunicationRepository],
   exports: services,
 })
 export class LibrariesModule {}
