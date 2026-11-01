@@ -41,6 +41,12 @@ export abstract class BaseRepository {
     return useLang ? this.read.raw("COALESCE(??, ??) AS ??", [translated, base, alias]) : `${base} as ${alias}`;
   }
 
+  /** Whether schema.table exists — for tables CI3 checks in information_schema before using. */
+  protected async tableExists(schema: string, table: string): Promise<boolean> {
+    const row = await this.read("information_schema.TABLES").select("TABLE_NAME").where({ TABLE_SCHEMA: schema, TABLE_NAME: table }).first();
+    return !!row;
+  }
+
   protected static useLang(langCode: string): boolean {
     return !!langCode && langCode !== "en";
   }

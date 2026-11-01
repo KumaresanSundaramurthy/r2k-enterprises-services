@@ -11,6 +11,8 @@ import { PaymentsModule } from "./payments/payments.module";
 import { CoreModule } from "./core/core.module";
 import { LibrariesModule } from "./libraries/libraries.module";
 import { CustomersModule } from "./modules/customers/customers.module";
+import { VendorsModule } from "./modules/vendors/vendors.module";
+import { ProductMasterModule } from "./modules/products/product-master.module";
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { CustomersModule } from "./modules/customers/customers.module";
     RedisModule,
     MailModule,
     CustomersModule,
+    VendorsModule,
+    ProductMasterModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

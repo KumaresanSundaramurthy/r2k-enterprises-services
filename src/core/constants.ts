@@ -7,7 +7,14 @@ export const BALANCE_FY_START_MONTH = 4;
 
 // Modules.ModuleTbl.ModuleUID values (names as in that table), used as Transaction.TransactionsTbl.ModuleUID.
 export const MODULE_UID = {
+  Quotations: 101,
+  SalesOrders: 102,
   Invoices: 103,
+  PurchaseOrders: 104,
+  Purchases: 105,
   SalesReturns: 106,
   CreditNotes: 107,
+  PurchaseReturns: 108,
+  DebitNotes: 109,
+  DeliveryChallans: 112,
 } as const;

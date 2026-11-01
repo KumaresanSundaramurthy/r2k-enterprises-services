@@ -15,6 +15,7 @@ export interface FieldRule {
   numeric?: boolean;
   inList?: string[];
   regex?: RegExp;
+  greaterThan?: number;
   greaterThanOrEqual?: number;
   lessThanOrEqual?: number;
   callbacks?: FieldCallback[];
@@ -58,6 +59,9 @@ export class CiFormValidator {
     }
     if (rule.regex && !rule.regex.test(value)) {
       return `The ${field} field is not in the correct format.`;
+    }
+    if (rule.greaterThan !== undefined && !(Number(value) > rule.greaterThan)) {
+      return `The ${field} field must contain a number greater than ${rule.greaterThan}.`;
     }
     if (rule.greaterThanOrEqual !== undefined && !(Number(value) >= rule.greaterThanOrEqual)) {
       return `The ${field} field must contain a number greater than or equal to ${rule.greaterThanOrEqual}.`;

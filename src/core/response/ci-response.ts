@@ -10,7 +10,15 @@ export function ciError(message: string): CiResponse {
 }
 
 // CI3's ValidationException: a business-rule failure whose message is shown to the user as-is.
-export class CiValidationError extends Error {}
+// `extra` adds fields to the error response (e.g. Errors on the product forms).
+export class CiValidationError extends Error {
+  constructor(
+    message?: string,
+    readonly extra: Record<string, unknown> = {}
+  ) {
+    super(message);
+  }
+}
 
 // Form validation failure: CI3 answers { Error, Message: 'Please correct the highlighted errors.', FieldErrors }.
 export class CiFieldValidationError extends Error {

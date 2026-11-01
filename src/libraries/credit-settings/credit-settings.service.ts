@@ -22,6 +22,7 @@ export interface CreditSettingsRow {
 // Shape CI3 stores in Upstash under {org}-credit-settings
 interface CachedCreditSettings {
   cust_next_number?: string;
+  vend_next_number?: string;
   gstin_points?: number;
 }
 
@@ -128,6 +129,85 @@ export class CreditSettingsService {
           CustomerSeqYear: fyYear2,
           UpdatedAt: nowDateTime(),
         });
+      return this.find(org.OrgUID);
+    }
+
+    return existing;
+  }
+
+  /** Next vendor number for the "new vendor" form — Upstash first, then the database (CI3 getNextVendorNumber). */
+  async getVendorNextNumber(org: OrgSettings): Promise<string> {
+    const cached = await this.upstash.get<CachedCreditSettings>(this.redis.orgKey("credit-settings", org.OrgToken));
+    if (cached && cached.vend_next_number) {
+      return cached.vend_next_number;
+    }
+
+    const settings = await this.getOrInitVendor(org);
+    if (!settings || !settings.VendorNextNumber) {
+      throw new CiValidationError("Unable to load vendor credit settings.");
+    }
+    await this.cacheHelper.mergeCreditSettings(org.OrgToken, { vend_next_number: settings.VendorNextNumber, gstin_points: toInt(settings.GstinPoints) });
+    return settings.VendorNextNumber;
+  }
+
+  /**
+   * Atomically takes the next vendor number (CI3 claimNextVendorNumber) and refreshes the cache.
+   * Same optimistic lock and FY rollover rules as customers, on VendorSeq + VendorSeqYear.
+   */
+  async claimNextVendorNumber(org: OrgSettings): Promise<{ claimed: string; next: string } | null> {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const row = attempt === 1 ? await this.getOrInitVendor(org) : await this.find(org.OrgUID);
+      if (!row) return null;
+
+      const currentYear = currentFinancialYear2(org.FYStartMonth, org.Timezone);
+      const storedYear = toInt(row.VendorSeqYear);
+      const storedSeq = toInt(row.VendorSeq);
+      const isRollover = storedYear === (currentYear - 1 + 100) % 100;
+      const claimedSeq = currentYear !== storedYear && isRollover ? 1 : storedSeq;
+      const nextSeq = claimedSeq + 1;
+      const yearPad = padYear2(currentYear);
+      const claimed = `V-${yearPad}${String(claimedSeq).padStart(4, "0")}`;
+      const next = `V-${yearPad}${String(nextSeq).padStart(4, "0")}`;
+
+      const affected = await this.db
+        .write("Settings.OrgCreditSettingsTbl")
+        .where({ OrgUID: org.OrgUID, VendorSeq: storedSeq, VendorSeqYear: storedYear })
+        .update({ VendorSeq: nextSeq, VendorSeqYear: currentYear, VendorNextNumber: next, UpdatedAt: nowDateTime() });
+      if (affected === 1) {
+        const fresh = await this.find(org.OrgUID);
+        await this.cacheHelper.mergeCreditSettings(org.OrgToken, { vend_next_number: next, gstin_points: toInt(fresh?.GstinPoints) });
+        return { claimed, next };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Settings row with the vendor columns initialised (CI3 getOrInitVendorCreditSettings): creates the row
+   * when missing, starts the vendor sequence when it was never set, and backfills VendorNextNumber.
+   */
+  async getOrInitVendor(org: OrgSettings): Promise<CreditSettingsRow | null> {
+    const existing = await this.find(org.OrgUID);
+    const fyYear2 = currentFinancialYear2(org.FYStartMonth, org.Timezone);
+    const yearPad = padYear2(fyYear2);
+
+    if (!existing) return this.getOrInit(org);
+
+    const neverSet =
+      existing.VendorSeq === null || existing.VendorSeqYear === null || (toInt(existing.VendorSeq) === 0 && toInt(existing.VendorSeqYear) === 0);
+    if (neverSet) {
+      await this.db
+        .write("Settings.OrgCreditSettingsTbl")
+        .where({ OrgUID: org.OrgUID })
+        .update({ VendorSeq: 1, VendorSeqYear: fyYear2, VendorNextNumber: `V-${yearPad}0001`, UpdatedAt: nowDateTime() });
+      return this.find(org.OrgUID);
+    }
+
+    if (!existing.VendorNextNumber) {
+      await this.db
+        .write("Settings.OrgCreditSettingsTbl")
+        .where({ OrgUID: org.OrgUID })
+        .update({ VendorNextNumber: `V-${yearPad}${String(toInt(existing.VendorSeq)).padStart(4, "0")}`, UpdatedAt: nowDateTime() });
       return this.find(org.OrgUID);
     }
 

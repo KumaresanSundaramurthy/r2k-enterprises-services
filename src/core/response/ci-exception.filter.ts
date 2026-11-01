@@ -19,7 +19,7 @@ export class CiExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof CiValidationError) {
-      res.status(HttpStatus.OK).json(ciError(exception.message));
+      res.status(HttpStatus.OK).json({ ...ciError(exception.message), ...exception.extra });
       return;
     }
 

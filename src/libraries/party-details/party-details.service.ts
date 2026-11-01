@@ -38,6 +38,23 @@ export interface AddressInput {
 // CI3 getPostValue(): missing or empty string → default
 const valueOrNull = (value: unknown): string | null => (value === undefined || value === null || value === "" ? null : String(value));
 
+/** {prefix}Addr* fields of a posted party form (prefix "Bill" or "Ship") as an AddressInput. */
+export function addressFromPost(form: object, prefix: "Bill" | "Ship"): AddressInput {
+  const record = form as Record<string, unknown>;
+  const value = (suffix: string) => valueOrNull(record[`${prefix}${suffix}`]);
+  const uidKey = `${prefix}AddressUID`;
+  return {
+    addressUID: Object.prototype.hasOwnProperty.call(record, uidKey) ? (record[uidKey] as number | string) : null,
+    line1: value("AddrLine1"),
+    line2: value("AddrLine2"),
+    pincode: (record[`${prefix}AddrPincode`] as string | undefined) ?? null,
+    city: value("AddrCity"),
+    cityText: value("AddrCityText"),
+    state: value("AddrState"),
+    stateText: value("AddrStateText"),
+  };
+}
+
 /**
  * Bank details and addresses of a party (CI3 Globalservice saveBankDetails / saveAddressInfo /
  * softDelete*Records). Shared by every party type through PartyTables.

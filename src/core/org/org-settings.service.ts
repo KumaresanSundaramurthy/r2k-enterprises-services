@@ -14,6 +14,9 @@ export interface OrgSettings {
   RowLimit: number;
   // GenSettings->ListDateTimeFormat (PHP date format); null when the organisation has not set one
   ListDateTimeFormat: string | null;
+  // GenSettings->EnableStorage / MandatoryStorage (1 = on): storage location on products
+  EnableStorage: number;
+  MandatoryStorage: number;
 }
 
 /**
@@ -33,7 +36,9 @@ export class OrgSettingsService {
         "Tz.Timezone as Timezone",
         "Settg.FYStartMonth as FYStartMonth",
         "Settg.RowLimit as RowLimit",
-        "Settg.ListDateTimeFormat as ListDateTimeFormat"
+        "Settg.ListDateTimeFormat as ListDateTimeFormat",
+        "Settg.EnableStorage as EnableStorage",
+        "Settg.MandatoryStorage as MandatoryStorage"
       )
       .leftJoin("Global.TimezoneTbl as Tz", "Tz.TimezoneUID", "Org.TimezoneUID")
       .leftJoin("Settings.OrgSettingsTbl as Settg", "Settg.OrgUID", "Org.OrgUID")
@@ -49,6 +54,8 @@ export class OrgSettingsService {
       FYStartMonth: toInt(row.FYStartMonth, 4) || 4,
       RowLimit: toInt(row.RowLimit, 10) || 10,
       ListDateTimeFormat: row.ListDateTimeFormat || null,
+      EnableStorage: toInt(row.EnableStorage),
+      MandatoryStorage: toInt(row.MandatoryStorage),
     };
   }
 
