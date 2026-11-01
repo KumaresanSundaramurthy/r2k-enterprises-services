@@ -24,7 +24,7 @@ import { CustomerCacheService } from "./customer-cache.service";
 import { CustomerExportService } from "./customer-export.service";
 import { CustomerProfileService } from "./customer-profile.service";
 import { CustomerWriteService } from "./customer-write.service";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiConsumes, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { OrgContextDto, OrgLangContextDto } from "../../core/dto/org-context.dto";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
@@ -108,18 +108,21 @@ export class CustomersController {
   }
 
   @Get("getCustomerOpeningBalance")
+  @ApiExcludeEndpoint()
   @ApiOperation({ summary: "Opening / closing balance row and the opening snapshot of a financial year" })
   async getCustomerOpeningBalance(@Query() dto: CustomerOpeningBalanceDto) {
     return ciSuccess(await this.customersService.getOpeningBalance(dto));
   }
 
   @Get("getCustomerBalance")
+  @ApiExcludeEndpoint()
   @ApiOperation({ summary: "Live balance: opening + invoiced − received − returned, with breakdown" })
   async getCustomerBalance(@Query() dto: CustomerBalanceDto) {
     return ciSuccess(await this.customersService.getBalance(dto));
   }
 
   @Post("getCustomerOnAccountBalance")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Unapplied (on-account) payments of a customer and their total" })
   async getCustomerOnAccountBalance(@Body() dto: CustomerBalanceDto) {
@@ -174,6 +177,7 @@ export class CustomersController {
   }
 
   @Post("saveCustomerOpeningBalance")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Set a customer's opening balance and the financial-year snapshot" })
   async saveCustomerOpeningBalance(@Body() dto: CustomerOpeningBalanceSaveDto, @Req() req: Request) {
@@ -181,6 +185,7 @@ export class CustomersController {
   }
 
   @Post("updateCustomerBalance")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Store the live balance (opening + invoiced − received − returned); CustomerUID 0 = all" })
   async updateCustomerBalance(@Body() dto: CustomerIdDto, @Req() req: Request) {
@@ -188,6 +193,7 @@ export class CustomersController {
   }
 
   @Post("recalcBalance")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Full closing-balance recalculation incl. credit / debit notes; CustomerUID 0 = all" })
   async recalcBalance(@Body() dto: CustomerIdDto, @Req() req: Request) {
@@ -195,6 +201,7 @@ export class CustomersController {
   }
 
   @Post("applyOnAccountPayment")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Apply an on-account payment to an invoice and recalculate the customer balance" })
   async applyOnAccountPayment(@Body() dto: ApplyOnAccountDto, @Req() req: Request) {
@@ -284,12 +291,14 @@ export class CustomersController {
   }
 
   @Get("getCustomerAttachments")
+  @ApiExcludeEndpoint()
   @ApiOperation({ summary: "A customer's images (Attachments: AttachUID, FileName, FilePath, FileSize, SortOrder, CreatedOn, Url)" })
   async getCustomerAttachments(@Query() dto: CustomerAttachmentsDto) {
     return ciSuccess(await this.customerAttachments.list(dto.orgId, Number(dto.CustomerUID) || 0));
   }
 
   @Post("saveCustomerAttachments")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @AttachFiles()
   @ApiConsumes("multipart/form-data")
@@ -299,6 +308,7 @@ export class CustomersController {
   }
 
   @Post("deleteCustomerAttachment")
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Delete one customer image; the next image becomes the customer's primary image" })
   async deleteCustomerAttachment(@Body() dto: CustomerAttachmentDeleteDto, @Req() req: Request) {

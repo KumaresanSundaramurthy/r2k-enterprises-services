@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, U
 import { Request } from "express";
 import { writeContext } from "../../core/request/write-context";
 import { CustomerGroupWriteService } from "./customer-group-write.service";
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { OrgContextDto, OrgLangContextDto } from "../../core/dto/org-context.dto";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
@@ -49,6 +49,7 @@ export class CustomerGroupsController {
   }
 
   @Get("getGroupOutstanding/:groupUID")
+  @ApiExcludeEndpoint()
   @ApiOperation({ summary: "Each group member's closing balance" })
   async getGroupOutstanding(@Param("groupUID") groupUID: string, @Query() dto: OrgLangContextDto) {
     return ciSuccess(await this.groupsService.getOutstanding(dto.orgId, Number(groupUID), dto.langCode));
