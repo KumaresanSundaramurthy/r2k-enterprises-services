@@ -1,12 +1,9 @@
 import { Module } from "@nestjs/common";
-import { ProductsController } from "./products.controller";
-import { ProductsService } from "./products.service";
 import { ProductsRepository } from "./products.repository";
 
+// Online-store product lookups for cart and orders (the store's own product endpoints were removed)
 @Module({
-  imports: [],
-  controllers: [ProductsController],
-  providers: [ProductsService, ProductsRepository],
+  providers: [ProductsRepository],
   exports: [ProductsRepository],
 })
 export class ProductsModule {}

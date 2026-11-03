@@ -40,6 +40,6 @@ import { SubscriptionCheckService } from "./services/subscription-check.service"
     SubscriptionRepository,
     ErpSessionGuard,
   ],
-  exports: [ErpSessionGuard, AuthTokenService, ErpUserRepository],
+  exports: [ErpSessionGuard, AuthTokenService, ErpUserRepository, SessionService, SessionDataRepository],
 })
 export class AuthModule {}

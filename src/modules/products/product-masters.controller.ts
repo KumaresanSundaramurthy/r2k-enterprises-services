@@ -177,10 +177,8 @@ export class ProductBrandsController {
     return ciSuccess(await this.brands.syncCache(dto.orgId));
   }
 
-  // ── CI3 function the JS does not call: migrated, hidden from Swagger ──────────
-
   @Get("retrieveBrandDetails")
-  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Brand details with its images (Data, Attachments)" })
   async retrieveBrandDetails(@Query() dto: BrandQueryDto) {
     return ciSuccess(await this.brands.getDetail(dto.orgId, postInt(dto, "BrandUID")));
   }

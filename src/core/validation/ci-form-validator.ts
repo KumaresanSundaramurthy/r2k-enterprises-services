@@ -23,6 +23,13 @@ export interface FieldRule {
 
 export type FieldRules = Record<string, FieldRule>;
 
+// CI3 validation_errors(): one <p> per failed field, for forms that throw it as the response Message
+export function validationErrorsText(errors: Record<string, string>): string {
+  return Object.values(errors)
+    .map((message) => `<p>${message}</p>\n`)
+    .join("");
+}
+
 // CI3 'numeric' rule
 const NUMERIC = /^[-+]?[0-9]*\.?[0-9]+$/;
 

@@ -267,7 +267,8 @@ export class SessionService {
     return value;
   }
 
-  private async loadTransactionSettings(orgUID: number): Promise<Record<string, unknown>> {
+  // Settings.TransactionSettingsTbl with the defaults CI3 fills in (also used when the settings page saves)
+  async loadTransactionSettings(orgUID: number): Promise<Record<string, unknown>> {
     const row: Record<string, unknown> = (await this.sessionData.getTransactionSettings(orgUID).catch(() => null)) ?? {};
     const defaults: Record<string, unknown> = {
       InvoiceCancelAction: "ask",

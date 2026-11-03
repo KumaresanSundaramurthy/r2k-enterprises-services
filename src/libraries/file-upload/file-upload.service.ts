@@ -29,7 +29,12 @@ export class FileUploadService {
    * itself for images (like PHP mime_content_type), otherwise the one given. Throws when the upload fails.
    */
   async upload(path: string, body: Buffer, contentType = "application/octet-stream"): Promise<UploadResult> {
-    const key = KEY_PREFIX + path.replace(/^\/+/, "");
+    return this.uploadAt(KEY_PREFIX + path.replace(/^\/+/, ""), body, contentType);
+  }
+
+  /** Same as upload(), at the exact object key with no user_uploads/ prefix (CI3 Drive::_driveUpload). */
+  async uploadAt(objectKey: string, body: Buffer, contentType = "application/octet-stream"): Promise<UploadResult> {
+    const key = objectKey.replace(/^\/+/, "");
     try {
       await this.s3().send(
         new PutObjectCommand({
