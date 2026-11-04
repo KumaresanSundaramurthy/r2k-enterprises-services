@@ -22,6 +22,8 @@ class AuditFilterDto {
 }
 
 export class AuditListDto extends OrgPagedListDto {
+  @ApiPropertyOptional({ type: Number, description: "1-based page number (0 or invalid = 1); used when it is not in the path" }) @Allow() PageNo?: string | number;
+
   @ApiPropertyOptional({ type: String, description: "Filter as JSON: { DateFrom, DateTo, Module, Action, UserUID, EntityType, Search }" })
   @IsOptional()
   @Transform(toJsonObject(AuditFilterDto))
@@ -46,6 +48,13 @@ export class ActivityLogController {
   @ApiOperation({ summary: "Page data: Modules, OrgUsers and the user's saved date range (SavedDateRange/Label/From/To, InitFilter)" })
   async getPageData(@Query() dto: OrgUserBranchContextDto) {
     return ciSuccess(await this.activity.getPageData(dto.orgId, dto.branchId, dto.userId));
+  }
+
+  // CI3 routes both settings/activitylog/getPageDetails (PageNo posted, as its page does) and .../getPageDetails/(:num)
+  @Get("getPageDetails")
+  @ApiOperation({ summary: "Audit list page, newest first, PageNo as a query parameter (Data, TotalCount, PageNo, RowLimit)" })
+  async getPageDetailsByQuery(@Query() dto: AuditListDto) {
+    return this.getPageDetails(String(dto.PageNo ?? ""), dto);
   }
 
   @Get("getPageDetails/:pageNo")
