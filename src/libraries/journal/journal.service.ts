@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Knex } from "knex";
-import { phpRound } from "../../common/utils/php-compat";
+import { phpRound, todayDate } from "../../common/utils/php-compat";
+import { DatabaseService } from "../../core/database/database.service";
 import { CiValidationError } from "../../core/response/ci-response";
 import { AccountLedgerRepository } from "../account-ledger/account-ledger.repository";
 import { JournalRepository } from "./journal.repository";
@@ -8,7 +9,51 @@ import { JournalRepository } from "./journal.repository";
 // CI3 Accountledger::_dec — journal amounts are kept to 4 decimals
 const DECIMALS = 4;
 
+// LedgerCode of the system ledgers (CI3 Accountledger::_getSystemLedgerUID)
+const SYSTEM_LEDGERS = {
+  expense: "SYS-EXPENSE",
+  indirectIncome: "SYS-IND-INC",
+  accountsPayable: "SYS-AP",
+  accountsReceivable: "SYS-AR",
+  cgstInput: "SYS-CGST-IN",
+  sgstInput: "SYS-SGST-IN",
+  igstInput: "SYS-IGST-IN",
+  stockInHand: "SYS-STOCK",
+  purchaseCost: "SYS-PURCH",
+  stockAdjustmentLoss: "SYS-STOCK-ADJ",
+} as const;
+
 export type JournalSide = "Debit" | "Credit";
+
+// A saved record whose journal is posted (expense, indirect income)
+export interface RecordJournal {
+  orgUID: number;
+  recordUID: number;
+  number: string;
+  date: string;
+  netAmount: number;
+  userUID: number;
+}
+
+export interface ExpenseJournal extends RecordJournal {
+  vendorUID: number;
+  taxableAmount: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+}
+
+export interface PaymentJournal {
+  orgUID: number;
+  direction: "made" | "received";
+  paymentUID: number;
+  date: string;
+  financialYear: number;
+  amount: number;
+  partyUID: number;
+  entityType: "Vendor" | "Customer";
+  userUID: number;
+}
 
 export interface JournalHeader {
   orgUID: number;
@@ -45,6 +90,7 @@ export class JournalService {
   private readonly logger = new Logger(JournalService.name);
 
   constructor(
+    private readonly db: DatabaseService,
     private readonly repo: JournalRepository,
     private readonly ledgers: AccountLedgerRepository
   ) {}
@@ -184,6 +230,173 @@ export class JournalService {
     await this.addLine(trx, header, journalUID, fromLedger, "Credit", value, `Transfer out — bank account #${fromBankUID}`);
   }
 
+  /**
+   * Journal postings that follow a saved record. CI3 posts them after its own commit and ignores a failure, so
+   * here they run in a transaction of their own: a failure is logged and leaves no half-written journal behind.
+   */
+  async postAfterSave(label: string, work: (trx: Knex.Transaction) => Promise<void>): Promise<void> {
+    try {
+      await this.db.write.transaction(work);
+    } catch (err) {
+      this.logger.error(`${label} journal failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * postExpenseJournal — with a vendor ledger: Dr Expense (taxable part), Dr input CGST / SGST / IGST, Cr the vendor
+   * (net payable). Otherwise: Dr Expense, Cr Accounts Payable, both for the net amount.
+   */
+  async postExpense(trx: Knex.Transaction, expense: ExpenseJournal): Promise<void> {
+    const net = phpRound(expense.netAmount, DECIMALS);
+    if (net <= 0) return;
+    const { orgUID } = expense;
+    const ref = expense.number || `#${expense.recordUID}`;
+    const header = JournalService.recordHeader(expense, "Expense", `Expense ${ref}`);
+    const journalUID = await this.createHeader(trx, header);
+    const expenseLedger = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.expense);
+
+    const vendorLedger = expense.vendorUID > 0 ? await this.ledgers.findEntityLedger(orgUID, "VendorUID", expense.vendorUID, "Vendor", trx) : null;
+    if (vendorLedger) {
+      const taxable = phpRound(expense.taxableAmount, DECIMALS);
+      if (expenseLedger) await this.addLine(trx, header, journalUID, expenseLedger, "Debit", taxable > 0 ? taxable : net, `Expense recorded — ${ref}`);
+      for (const [code, amount, label] of [
+        [SYSTEM_LEDGERS.cgstInput, expense.cgst, "CGST"],
+        [SYSTEM_LEDGERS.sgstInput, expense.sgst, "SGST"],
+        [SYSTEM_LEDGERS.igstInput, expense.igst, "IGST"],
+      ] as const) {
+        if (phpRound(amount, DECIMALS) <= 0) continue;
+        const taxLedger = await this.repo.systemLedgerUID(trx, orgUID, code);
+        if (taxLedger) await this.addLine(trx, header, journalUID, taxLedger, "Debit", amount, `Input ${label} on expense — ${ref}`);
+      }
+      await this.addLine(trx, header, journalUID, Number(vendorLedger.LedgerUID), "Credit", net, `Payable to vendor — expense ${ref}`);
+      return;
+    }
+
+    if (expenseLedger) await this.addLine(trx, header, journalUID, expenseLedger, "Debit", net, `Expense recorded — ${ref}`);
+    const payable = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.accountsPayable);
+    if (payable) await this.addLine(trx, header, journalUID, payable, "Credit", net, `Payable for expense — ${ref}`);
+  }
+
+  // postIndirectIncomeJournal — Dr Accounts Receivable, Cr Indirect Income
+  async postIndirectIncome(trx: Knex.Transaction, income: RecordJournal): Promise<void> {
+    const net = phpRound(income.netAmount, DECIMALS);
+    if (net <= 0) return;
+    const ref = income.number || `#${income.recordUID}`;
+    const header = JournalService.recordHeader(income, "IndirectIncome", `Indirect Income ${ref}`);
+    const journalUID = await this.createHeader(trx, header);
+    const receivable = await this.repo.systemLedgerUID(trx, income.orgUID, SYSTEM_LEDGERS.accountsReceivable);
+    if (receivable) await this.addLine(trx, header, journalUID, receivable, "Debit", net, `Income receivable — ${ref}`);
+    const incomeLedger = await this.repo.systemLedgerUID(trx, income.orgUID, SYSTEM_LEDGERS.indirectIncome);
+    if (incomeLedger) await this.addLine(trx, header, journalUID, incomeLedger, "Credit", net, `Indirect income recorded — ${ref}`);
+  }
+
+  /**
+   * postStockAdjustmentJournal — stock in: Dr Stock-in-Hand, Cr Purchase Cost; stock out: Dr Stock Adjustment
+   * Loss, Cr Stock-in-Hand. Reference ADJ-{id}; the financial year is the calendar year of the date, as in CI3.
+   */
+  async postStockAdjustment(trx: Knex.Transaction, orgUID: number, adjUID: number, date: string, adjType: "IN" | "OUT", stockValue: number, userUID: number): Promise<void> {
+    const value = phpRound(stockValue, DECIMALS);
+    if (value <= 0) return;
+    const header: JournalHeader = {
+      orgUID,
+      date,
+      financialYear: Number(date.slice(0, 4)),
+      referenceType: "StockAdjustment",
+      referenceID: adjUID,
+      referenceNo: `ADJ-${adjUID}`,
+      narration: `Manual stock ${adjType.toLowerCase()} adjustment — Adj #${adjUID}`,
+      userUID,
+    };
+    const journalUID = await this.createHeader(trx, header);
+    const stockLedger = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.stockInHand);
+    if (adjType === "IN") {
+      if (stockLedger) await this.addLine(trx, header, journalUID, stockLedger, "Debit", value, `Stock received — Adj #${adjUID}`);
+      const purchaseLedger = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.purchaseCost);
+      if (purchaseLedger) await this.addLine(trx, header, journalUID, purchaseLedger, "Credit", value, `Stock addition cost — Adj #${adjUID}`);
+    } else {
+      const lossLedger = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.stockAdjustmentLoss);
+      if (lossLedger) await this.addLine(trx, header, journalUID, lossLedger, "Debit", value, `Stock removed/written off — Adj #${adjUID}`);
+      if (stockLedger) await this.addLine(trx, header, journalUID, stockLedger, "Credit", value, `Stock reduction — Adj #${adjUID}`);
+    }
+  }
+
+  // postPaymentJournal — a payment made to (Dr) or received from (Cr) the party's ledger; nothing without one
+  async postPayment(trx: Knex.Transaction, payment: PaymentJournal): Promise<void> {
+    const amount = phpRound(payment.amount, DECIMALS);
+    if (amount <= 0) return;
+    const column = payment.entityType === "Vendor" ? "VendorUID" : "CustomerUID";
+    const partyLedger = await this.ledgers.findEntityLedger(payment.orgUID, column, payment.partyUID, payment.entityType, trx);
+    if (!partyLedger) return;
+
+    const made = payment.direction === "made";
+    const header: JournalHeader = {
+      orgUID: payment.orgUID,
+      date: payment.date,
+      financialYear: payment.financialYear,
+      referenceType: made ? "Payment-Out" : "Payment-In",
+      referenceID: payment.paymentUID,
+      referenceNo: null,
+      narration: `${made ? "Payment made" : "Payment received"} — ${payment.entityType} #${payment.partyUID}`,
+      userUID: payment.userUID,
+    };
+    const journalUID = await this.createHeader(trx, header);
+    await this.addLine(
+      trx,
+      header,
+      journalUID,
+      Number(partyLedger.LedgerUID),
+      made ? "Debit" : "Credit",
+      amount,
+      `${made ? "Payment made" : "Payment received"} against transaction #${payment.paymentUID}`
+    );
+  }
+
+  // ensurePaymentJournals — journals the record's payments that have none yet, so the vendor balance stays right
+  async ensurePaymentJournals(trx: Knex.Transaction, orgUID: number, expenseUID: number, vendorUID: number, userUID: number): Promise<void> {
+    for (const payment of await this.repo.activePayments(trx, orgUID, expenseUID, "Expense")) {
+      const paymentUID = Number(payment.PaymentUID);
+      if ((await this.repo.journalsByReference(trx, orgUID, "Payment-Out", paymentUID)).length > 0) continue;
+      await this.postPayment(trx, {
+        orgUID,
+        direction: "made",
+        paymentUID,
+        date: String(payment.PaymentDate),
+        financialYear: Number(payment.TransYear),
+        amount: Number(payment.Amount),
+        partyUID: vendorUID,
+        entityType: "Vendor",
+        userUID,
+      });
+    }
+  }
+
+  // reverseJournal — each live journal of the record is soft-deleted and a dated-today journal with Dr/Cr swapped is posted
+  async reverse(trx: Knex.Transaction, orgUID: number, referenceType: string, referenceID: number, userUID: number): Promise<void> {
+    const today = todayDate();
+    for (const journal of await this.repo.journalsByReference(trx, orgUID, referenceType, referenceID)) {
+      const journalUID = Number(journal.JournalUID);
+      const entries = await this.repo.journalEntries(trx, orgUID, journalUID);
+      await this.repo.softDeleteJournal(trx, orgUID, journalUID);
+      if (entries.length === 0) continue;
+
+      const header: JournalHeader = {
+        orgUID,
+        date: today,
+        financialYear: Number(journal.FinancialYear),
+        referenceType: `Reversal-${referenceType}`,
+        referenceID,
+        referenceNo: `REV-${journal.JournalNo}`,
+        narration: `Reversal of journal ${journal.JournalNo}`,
+        userUID,
+      };
+      const reversalUID = await this.createHeader(trx, header);
+      for (const entry of entries) {
+        const side: JournalSide = entry.TransactionType === "Debit" ? "Credit" : "Debit";
+        await this.addLine(trx, header, reversalUID, Number(entry.LedgerUID), side, Number(entry.Amount), `Reversal: ${entry.Particulars ?? ""}`);
+      }
+    }
+  }
+
   // _writeBankLedgerEntry — non-fatal, as in CI3: a failure is logged and the caller carries on
   async writeBankLedgerEntry(entry: BankLedgerEntry): Promise<void> {
     if (!entry.bankAccountUID || entry.amount <= 0) return;
@@ -207,6 +420,20 @@ export class JournalService {
     } catch (err) {
       this.logger.error(`Bank ledger entry for ${entry.sourceType} ${entry.sourceUID} failed: ${(err as Error).message}`);
     }
+  }
+
+  // Header of a record's journal; CI3 uses the calendar year of the record date as the financial year
+  private static recordHeader(record: RecordJournal, referenceType: string, narration: string): JournalHeader {
+    return {
+      orgUID: record.orgUID,
+      date: record.date,
+      financialYear: Number(record.date.slice(0, 4)),
+      referenceType,
+      referenceID: record.recordUID,
+      referenceNo: record.number || null,
+      narration,
+      userUID: record.userUID,
+    };
   }
 
   // PHP date('d M Y')

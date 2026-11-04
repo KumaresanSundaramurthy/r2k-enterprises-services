@@ -22,6 +22,11 @@ import { SettingsModule } from "./modules/settings/settings.module";
 import { DriveModule } from "./modules/drive/drive.module";
 import { PrintThemesModule } from "./modules/print-themes/print-themes.module";
 import { ActivityLogModule } from "./modules/activity-log/activity-log.module";
+import { ExpensesModule } from "./modules/expenses/expenses.module";
+import { IndirectIncomeModule } from "./modules/indirect-income/indirect-income.module";
+import { InventoryModule } from "./modules/inventory/inventory.module";
+import { PurchasePriceListModule } from "./modules/purchase-price-list/purchase-price-list.module";
+import { PaymentRecordsModule } from "./modules/payment-records/payment-records.module";
 
 @Module({
   imports: [
@@ -41,6 +46,11 @@ import { ActivityLogModule } from "./modules/activity-log/activity-log.module";
     DriveModule,
     PrintThemesModule,
     ActivityLogModule,
+    ExpensesModule,
+    IndirectIncomeModule,
+    InventoryModule,
+    PurchasePriceListModule,
+    PaymentRecordsModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

@@ -38,6 +38,7 @@ interface AuditDetails {
   amountChange?: unknown;
   balanceTypeChange?: string | null;
   reason?: string;
+  referenceId?: number | null;
 }
 
 /**
@@ -180,6 +181,40 @@ export class AccountLedgerService {
     return ledger ? Number(ledger.LedgerUID) : null;
   }
 
+  /**
+   * applyLedgerEntry — moves the party ledger's CurrentBalance by a Debit / Credit amount (same side adds,
+   * the other side nets off) and records a BALANCE_ADJUST audit row. Throws when the party has no ledger.
+   */
+  async applyBalanceEntry(trx: Knex.Transaction, ctx: WriteContext, entityType: LedgerEntityType, entityUID: number, amount: number, side: "Debit" | "Credit", referenceID: number | null) {
+    const value = phpRound(amount, LEDGER_DECIMALS);
+    if (value <= 0) return;
+    const ledger = await this.ledgers.findEntityLedger(ctx.orgUID, LEDGER_CONFIG[entityType].entityColumn, entityUID, entityType, trx);
+    if (!ledger) throw new Error(`No ledger found for ${entityType} ID ${entityUID}. Create the customer/vendor first.`);
+
+    const current = phpRound(Number(ledger.CurrentBalance ?? 0), LEDGER_DECIMALS);
+    const currentSide = (ledger.CurrentBalanceType || "Debit") as "Debit" | "Credit";
+    let balance: number;
+    let balanceSide: "Debit" | "Credit";
+    if (side === currentSide) {
+      balance = current + value;
+      balanceSide = currentSide;
+    } else if (value >= current) {
+      balance = phpRound(value - current, LEDGER_DECIMALS);
+      balanceSide = side;
+    } else {
+      balance = phpRound(current - value, LEDGER_DECIMALS);
+      balanceSide = currentSide;
+    }
+    const ledgerUID = Number(ledger.LedgerUID);
+    await this.ledgers.updateLedger(trx, ctx.orgUID, ledgerUID, { CurrentBalance: balance, CurrentBalanceType: balanceSide, UpdatedBy: ctx.userUID });
+    await this.audit(trx, ctx, entityType, entityUID, ledgerUID, "BALANCE_ADJUST", {
+      reason: `${side} entry applied`,
+      amountChange: value,
+      balanceTypeChange: balanceSide,
+      referenceId: referenceID,
+    });
+  }
+
   // logLedgerAudit
   private async audit(
     trx: Knex.Transaction,
@@ -187,7 +222,7 @@ export class AccountLedgerService {
     entityType: LedgerEntityType,
     entityUID: number,
     ledgerUID: number,
-    changeType: "CREATE" | "UPDATE" | "DELETE",
+    changeType: "CREATE" | "UPDATE" | "DELETE" | "BALANCE_ADJUST",
     details: AuditDetails
   ) {
     await this.ledgers.insertAudit(trx, {
@@ -202,7 +237,7 @@ export class AccountLedgerService {
         AmountChange: details.amountChange ?? 0,
         BalanceTypeChange: details.balanceTypeChange ?? null,
         Reason: details.reason ?? "Ledger update",
-        ReferenceId: null,
+        ReferenceId: details.referenceId ?? null,
         EntityType: entityType,
       }),
       CreatedBy: ctx.userUID,

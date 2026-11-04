@@ -67,4 +67,38 @@ export class JournalRepository extends BaseRepository {
   async insertBankLedgerEntry(row: Row): Promise<void> {
     await this.db.write("Transaction.AccountLedgerTbl").insert(row);
   }
+
+  // getSystemLedgerByCode — the organisation's system ledger (SYS-EXPENSE, SYS-AP, …)
+  async systemLedgerUID(trx: Knex.Transaction, orgUID: number, code: string): Promise<number | null> {
+    const row = await trx("Accounting.ChartOfAccounts").select("LedgerUID").where({ LedgerCode: code, OrgUID: orgUID, IsDeleted: 0 }).first();
+    return row ? Number(row.LedgerUID) : null;
+  }
+
+  // getJournalByReference — live journals posted for a record
+  async journalsByReference(trx: Knex.Transaction, orgUID: number, referenceType: string, referenceID: number): Promise<Row[]> {
+    return trx("Accounting.GeneralJournal")
+      .select("JournalUID", "JournalNo", "FinancialYear")
+      .where({ ReferenceType: referenceType, ReferenceID: referenceID, OrgUID: orgUID, IsDeleted: 0 });
+  }
+
+  // getJournalEntries
+  async journalEntries(trx: Knex.Transaction, orgUID: number, journalUID: number): Promise<Row[]> {
+    return trx("Accounting.JournalEntries")
+      .select("EntryUID", "LedgerUID", "TransactionType", "Amount", "Particulars")
+      .where({ JournalUID: journalUID, OrgUID: orgUID, IsDeleted: 0 });
+  }
+
+  // The journal header and its lines are soft-deleted (reverseJournal)
+  async softDeleteJournal(trx: Knex.Transaction, orgUID: number, journalUID: number): Promise<void> {
+    await trx("Accounting.GeneralJournal").where({ OrgUID: orgUID, JournalUID: journalUID }).update({ IsDeleted: 1 });
+    await trx("Accounting.JournalEntries").where({ OrgUID: orgUID, JournalUID: journalUID, IsDeleted: 0 }).update({ IsDeleted: 1 });
+  }
+
+  // Live payments of one record, oldest first (ensurePaymentJournals)
+  async activePayments(trx: Knex.Transaction, orgUID: number, transUID: number, sourceType: string): Promise<Row[]> {
+    return trx("Transaction.PaymentsTbl")
+      .select("PaymentUID", trx.raw("DATE_FORMAT(PaymentDate, '%Y-%m-%d') AS PaymentDate"), "TransYear", "Amount")
+      .where({ TransUID: transUID, SourceType: sourceType, OrgUID: orgUID, IsDeleted: 0, IsActive: 1 })
+      .orderBy("PaymentUID", "asc");
+  }
 }
