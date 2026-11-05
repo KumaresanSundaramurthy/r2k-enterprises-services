@@ -21,6 +21,10 @@ const SYSTEM_LEDGERS = {
   stockInHand: "SYS-STOCK",
   purchaseCost: "SYS-PURCH",
   stockAdjustmentLoss: "SYS-STOCK-ADJ",
+  salesRevenue: "SYS-SALES",
+  cgstOutput: "SYS-CGST-OUT",
+  sgstOutput: "SYS-SGST-OUT",
+  igstOutput: "SYS-IGST-OUT",
 } as const;
 
 export type JournalSide = "Debit" | "Credit";
@@ -54,6 +58,25 @@ export interface PaymentJournal {
   entityType: "Vendor" | "Customer";
   userUID: number;
 }
+
+// A saved purchase bill / purchase return whose journal is posted
+export interface DocumentJournal {
+  orgUID: number;
+  transUID: number;
+  number: string | null;
+  date: string;
+  financialYear: number;
+  netAmount: number;
+  taxableAmount: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  vendorUID: number;
+  userUID: number;
+}
+
+// A saved invoice / sales return whose journal is posted
+export type SaleJournal = Omit<DocumentJournal, "vendorUID"> & { customerUID: number };
 
 export interface JournalHeader {
   orgUID: number;
@@ -320,6 +343,78 @@ export class JournalService {
     }
   }
 
+  // postPurchaseJournal — Dr Purchase (taxable) + Dr input CGST / SGST / IGST, Cr the vendor (net payable)
+  async postPurchase(trx: Knex.Transaction, bill: DocumentJournal): Promise<void> {
+    const net = phpRound(bill.netAmount, DECIMALS);
+    if (net <= 0) return;
+    const vendorLedger = await this.ledgers.findEntityLedger(bill.orgUID, "VendorUID", bill.vendorUID, "Vendor", trx);
+    if (!vendorLedger) return;
+    const ref = bill.number ?? "";
+    const header = JournalService.documentHeader(bill, "Purchase", `Purchase Bill ${bill.number || "Draft"} — Vendor #${bill.vendorUID}`);
+    const journalUID = await this.createHeader(trx, header);
+    const purchaseLedger = await this.repo.systemLedgerUID(trx, bill.orgUID, SYSTEM_LEDGERS.purchaseCost);
+    if (purchaseLedger) await this.addLine(trx, header, journalUID, purchaseLedger, "Debit", bill.taxableAmount, `Purchase of goods/services — ${ref}`);
+    for (const [code, amount, label] of JournalService.inputTaxes(bill)) {
+      const taxLedger = await this.repo.systemLedgerUID(trx, bill.orgUID, code);
+      if (taxLedger) await this.addLine(trx, header, journalUID, taxLedger, "Debit", amount, `Input ${label} — ${ref}`);
+    }
+    await this.addLine(trx, header, journalUID, Number(vendorLedger.LedgerUID), "Credit", net, `Bill ${ref} — Amount Payable`);
+  }
+
+  // postPurchaseReturnJournal — Dr the vendor (net), Cr Purchase (taxable) + Cr input CGST / SGST / IGST
+  async postPurchaseReturn(trx: Knex.Transaction, ret: DocumentJournal): Promise<void> {
+    const net = phpRound(ret.netAmount, DECIMALS);
+    if (net <= 0) return;
+    const vendorLedger = await this.ledgers.findEntityLedger(ret.orgUID, "VendorUID", ret.vendorUID, "Vendor", trx);
+    if (!vendorLedger) return;
+    const ref = ret.number ?? "";
+    const header = JournalService.documentHeader(ret, "PurchaseReturn", `Purchase Return ${ret.number || "Draft"} — Vendor #${ret.vendorUID}`);
+    const journalUID = await this.createHeader(trx, header);
+    await this.addLine(trx, header, journalUID, Number(vendorLedger.LedgerUID), "Debit", net, `Purchase return debit — ${ref}`);
+    const purchaseLedger = await this.repo.systemLedgerUID(trx, ret.orgUID, SYSTEM_LEDGERS.purchaseCost);
+    if (purchaseLedger) await this.addLine(trx, header, journalUID, purchaseLedger, "Credit", ret.taxableAmount, `Purchase return — goods/services reversed ${ref}`);
+    for (const [code, amount, label] of JournalService.inputTaxes(ret)) {
+      const taxLedger = await this.repo.systemLedgerUID(trx, ret.orgUID, code);
+      if (taxLedger) await this.addLine(trx, header, journalUID, taxLedger, "Credit", amount, `Input ${label} reversed — ${ref}`);
+    }
+  }
+
+  // postSaleJournal — Dr the customer (net receivable), Cr Sales (taxable) + Cr output CGST / SGST / IGST
+  async postSale(trx: Knex.Transaction, sale: SaleJournal): Promise<void> {
+    const net = phpRound(sale.netAmount, DECIMALS);
+    if (net <= 0) return;
+    const customerLedger = await this.ledgers.findEntityLedger(sale.orgUID, "CustomerUID", sale.customerUID, "Customer", trx);
+    if (!customerLedger) return;
+    const ref = sale.number ?? "";
+    const header = JournalService.saleHeader(sale, "Invoice", `Sale Invoice ${sale.number || "Draft"} — Customer #${sale.customerUID}`);
+    const journalUID = await this.createHeader(trx, header);
+    await this.addLine(trx, header, journalUID, Number(customerLedger.LedgerUID), "Debit", net, `Invoice ${ref} — Amount Receivable`);
+    const salesLedger = await this.repo.systemLedgerUID(trx, sale.orgUID, SYSTEM_LEDGERS.salesRevenue);
+    if (salesLedger) await this.addLine(trx, header, journalUID, salesLedger, "Credit", sale.taxableAmount, `Sale of goods/services — ${ref}`);
+    for (const [code, amount, label] of JournalService.outputTaxes(sale)) {
+      const taxLedger = await this.repo.systemLedgerUID(trx, sale.orgUID, code);
+      if (taxLedger) await this.addLine(trx, header, journalUID, taxLedger, "Credit", amount, `Output ${label} — ${ref}`);
+    }
+  }
+
+  // postSaleReturnJournal — Dr Sales (taxable) + Dr output CGST / SGST / IGST, Cr the customer (net)
+  async postSaleReturn(trx: Knex.Transaction, ret: SaleJournal): Promise<void> {
+    const net = phpRound(ret.netAmount, DECIMALS);
+    if (net <= 0) return;
+    const customerLedger = await this.ledgers.findEntityLedger(ret.orgUID, "CustomerUID", ret.customerUID, "Customer", trx);
+    if (!customerLedger) return;
+    const ref = ret.number ?? "";
+    const header = JournalService.saleHeader(ret, "SalesReturn", `Sales Return ${ret.number || "Draft"} — Customer #${ret.customerUID}`);
+    const journalUID = await this.createHeader(trx, header);
+    const salesLedger = await this.repo.systemLedgerUID(trx, ret.orgUID, SYSTEM_LEDGERS.salesRevenue);
+    if (salesLedger) await this.addLine(trx, header, journalUID, salesLedger, "Debit", ret.taxableAmount, `Sales return — goods/services reversed ${ref}`);
+    for (const [code, amount, label] of JournalService.outputTaxes(ret)) {
+      const taxLedger = await this.repo.systemLedgerUID(trx, ret.orgUID, code);
+      if (taxLedger) await this.addLine(trx, header, journalUID, taxLedger, "Debit", amount, `Output ${label} reversed — ${ref}`);
+    }
+    await this.addLine(trx, header, journalUID, Number(customerLedger.LedgerUID), "Credit", net, `Sales return credit — ${ref}`);
+  }
+
   // postPaymentJournal — a payment made to (Dr) or received from (Cr) the party's ledger; nothing without one
   async postPayment(trx: Knex.Transaction, payment: PaymentJournal): Promise<void> {
     const amount = phpRound(payment.amount, DECIMALS);
@@ -397,8 +492,11 @@ export class JournalService {
     }
   }
 
-  // _writeBankLedgerEntry — non-fatal, as in CI3: a failure is logged and the caller carries on
-  async writeBankLedgerEntry(entry: BankLedgerEntry): Promise<void> {
+  /**
+   * _writeBankLedgerEntry — non-fatal, as in CI3: a failure is logged and the caller carries on. With trx the line
+   * is written in the caller's transaction (CI3 writes it inside the open document transaction).
+   */
+  async writeBankLedgerEntry(entry: BankLedgerEntry, trx?: Knex.Transaction): Promise<void> {
     if (!entry.bankAccountUID || entry.amount <= 0) return;
     try {
       await this.repo.insertBankLedgerEntry({
@@ -416,7 +514,7 @@ export class JournalService {
         IsDeleted: 0,
         CreatedBy: entry.userUID,
         UpdatedBy: entry.userUID,
-      });
+      }, trx);
     } catch (err) {
       this.logger.error(`Bank ledger entry for ${entry.sourceType} ${entry.sourceUID} failed: ${(err as Error).message}`);
     }
@@ -434,6 +532,46 @@ export class JournalService {
       narration,
       userUID: record.userUID,
     };
+  }
+
+  // Header of a purchase / purchase return journal; the financial year is the document's (calendar year of its date)
+  private static documentHeader(doc: DocumentJournal, referenceType: string, narration: string): JournalHeader {
+    return {
+      orgUID: doc.orgUID,
+      date: doc.date,
+      financialYear: doc.financialYear,
+      referenceType,
+      referenceID: doc.transUID,
+      referenceNo: doc.number || null,
+      narration,
+      userUID: doc.userUID,
+    };
+  }
+
+  // The input-tax lines a purchase document carries (only the non-zero ones are posted)
+  private static saleHeader(doc: SaleJournal, referenceType: string, narration: string): JournalHeader {
+    return { orgUID: doc.orgUID, date: doc.date, financialYear: doc.financialYear, referenceType, referenceID: doc.transUID, referenceNo: doc.number || null, narration, userUID: doc.userUID };
+  }
+
+  // The output-tax lines a sales document carries (only the non-zero ones are posted)
+  private static outputTaxes(doc: SaleJournal) {
+    return (
+      [
+        [SYSTEM_LEDGERS.cgstOutput, doc.cgst, "CGST"],
+        [SYSTEM_LEDGERS.sgstOutput, doc.sgst, "SGST"],
+        [SYSTEM_LEDGERS.igstOutput, doc.igst, "IGST"],
+      ] as const
+    ).filter(([, amount]) => phpRound(amount, DECIMALS) > 0);
+  }
+
+  private static inputTaxes(doc: DocumentJournal) {
+    return (
+      [
+        [SYSTEM_LEDGERS.cgstInput, doc.cgst, "CGST"],
+        [SYSTEM_LEDGERS.sgstInput, doc.sgst, "SGST"],
+        [SYSTEM_LEDGERS.igstInput, doc.igst, "IGST"],
+      ] as const
+    ).filter(([, amount]) => phpRound(amount, DECIMALS) > 0);
   }
 
   // PHP date('d M Y')

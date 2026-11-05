@@ -38,6 +38,6 @@ import { SettingsLookupsRepository } from "./settings-lookups.repository";
     AdditionalChargesRepository,
     SettingsLookupsRepository,
   ],
-  exports: [SettingsLookupsRepository],
+  exports: [SettingsLookupsRepository, AdditionalChargesRepository],
 })
 export class SettingsModule {}

@@ -6,5 +6,6 @@ import { PurchasePriceListService } from "./purchase-price-list.service";
 @Module({
   controllers: [PurchasePriceListController],
   providers: [PurchasePriceListService, PurchasePriceListRepository],
+  exports: [PurchasePriceListRepository],
 })
 export class PurchasePriceListModule {}

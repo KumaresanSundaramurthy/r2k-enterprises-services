@@ -23,6 +23,20 @@ export function numberToWords(amount: number): string {
   return `${result} Only`;
 }
 
+const escapeHtmlAttr = (text: string) => text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#039;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// print_build_qr_html — a UPI payment QR (qrserver.com) with the organisation logo over its centre; "" without a UPI ID
+export function buildQrHtml(upiId: string, amount: number, orgName: string, orgLogo = ""): string {
+  if (!upiId) return "";
+  const upi = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(orgName)}&am=${(Math.round(amount * 100) / 100).toFixed(2)}&cu=INR`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&ecc=H&data=${encodeURIComponent(upi)}`;
+  const logo = orgLogo
+    ? '<div class="qr-logo-overlay" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:38px;height:38px;' +
+      `background:#fff;border-radius:4px;padding:3px;box-sizing:border-box;"><img src="${escapeHtmlAttr(orgLogo)}" style="width:100%;height:100%;object-fit:contain;"></div>`
+    : "";
+  return `<div style="position:relative;display:inline-block;line-height:0;"><img src="${qrUrl}" width="150" height="150">${logo}</div>`;
+}
+
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**

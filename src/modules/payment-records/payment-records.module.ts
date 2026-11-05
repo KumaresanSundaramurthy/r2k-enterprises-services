@@ -13,5 +13,6 @@ import { PaymentWritesRepository } from "./payment-writes.repository";
   imports: [CustomersModule],
   controllers: [PaymentRecordsController],
   providers: [PaymentRecordsService, PaymentRecordsRepository, PaymentWriteService, PaymentWritesRepository, PaymentReceiptService, PaymentBanksService],
+  exports: [PaymentRecordsRepository],
 })
 export class PaymentRecordsModule {}

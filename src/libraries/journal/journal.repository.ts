@@ -64,8 +64,8 @@ export class JournalRepository extends BaseRepository {
   }
 
   // _writeBankLedgerEntry — one CR/DR line in the bank/cash book
-  async insertBankLedgerEntry(row: Row): Promise<void> {
-    await this.db.write("Transaction.AccountLedgerTbl").insert(row);
+  async insertBankLedgerEntry(row: Row, trx?: Knex.Transaction): Promise<void> {
+    await (trx ?? this.db.write)("Transaction.AccountLedgerTbl").insert(row);
   }
 
   // getSystemLedgerByCode — the organisation's system ledger (SYS-EXPENSE, SYS-AP, …)

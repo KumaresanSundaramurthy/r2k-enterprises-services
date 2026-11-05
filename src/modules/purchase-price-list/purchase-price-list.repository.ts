@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Knex } from "knex";
+import { nowDateTime, phpBool, phpRound } from "../../common/utils/php-compat";
 import { BaseRepository } from "../../core/base/base.repository";
 import { DatabaseService } from "../../core/database/database.service";
 
@@ -112,5 +113,83 @@ export class PurchasePriceListRepository extends BaseRepository {
       this.whereAnyLike(query, ["P.ItemName", "P.SKU", "V.Name", "L.HSNCode", "L.LastUniqueNumber"], word);
     }
     return query;
+  }
+
+  /**
+   * upsertFromPurchase — each line of a saved purchase bill becomes the product's latest price from the vendor
+   * (one entry per branch + product + vendor). The price stored is the line's unit price before tax; a missing tax
+   * rate is worked out from the tax amounts and a missing total from price, tax and discount.
+   */
+  async upsertFromPurchase(
+    bill: { orgUID: number; branchUID: number; vendorUID: number; transUID: number; transDate: string; uniqueNumber: string; financialYear: string; userUID: number },
+    lines: Row[]
+  ): Promise<void> {
+    const now = nowDateTime();
+    for (const line of lines) {
+      const productUID = Math.trunc(Number(line.id ?? 0) || 0);
+      const qty = Number(line.quantity ?? 0) || 0;
+      if (productUID <= 0 || qty <= 0) continue;
+      const price = Number(line.unitPrice ?? 0) || 0;
+      const cgst = Number(line.cgstAmount ?? 0) || 0;
+      const sgst = Number(line.sgstAmount ?? 0) || 0;
+      const igst = Number(line.igstAmount ?? 0) || 0;
+      const discountAmt = Number(line.discount_amount ?? 0) || 0;
+      const lineTax = cgst + sgst + igst;
+      let taxPct = Number(line.taxPercent ?? 0) || 0;
+      if (taxPct === 0 && lineTax > 0 && price > 0) taxPct = phpRound((lineTax / (price * qty)) * 100, 4);
+      let total = Number(line.net_total ?? 0) || 0;
+      if (total === 0 && price > 0) total = phpRound(price * qty + lineTax - discountAmt, 4);
+
+      await this.db.write(LIST)
+        .insert({
+          OrgUID: bill.orgUID,
+          BranchUID: bill.branchUID,
+          ProductUID: productUID,
+          VendorUID: bill.vendorUID,
+          PurchasePrice: price,
+          IsPurchasePriceIncl: (typeof line.purchasePriceIsIncl === "boolean" ? line.purchasePriceIsIncl : phpBool(line.purchasePriceIsIncl)) ? 1 : 0,
+          TaxPct: taxPct,
+          CGSTAmt: cgst,
+          SGSTAmt: sgst,
+          IGSTAmt: igst,
+          Qty: qty,
+          Unit: String(line.primaryUnit ?? "").slice(0, 50),
+          DiscountPct: Number(line.discount ?? 0) || 0,
+          DiscountAmt: discountAmt,
+          TotalAmt: total,
+          HSNCode: String(line.hsnCode ?? "").slice(0, 50),
+          VariantUID: Number(line.variantUID ?? 0) > 0 ? Math.trunc(Number(line.variantUID)) : null,
+          LastTransUID: bill.transUID,
+          LastUniqueNumber: bill.uniqueNumber,
+          LastPurchaseDate: bill.transDate,
+          FinancialYear: bill.financialYear,
+          CreatedBy: bill.userUID,
+          CreatedOn: now,
+          UpdatedBy: bill.userUID,
+          UpdatedOn: now,
+        })
+        .onConflict()
+        .merge([
+          "PurchasePrice",
+          "IsPurchasePriceIncl",
+          "TaxPct",
+          "CGSTAmt",
+          "SGSTAmt",
+          "IGSTAmt",
+          "Qty",
+          "Unit",
+          "DiscountPct",
+          "DiscountAmt",
+          "TotalAmt",
+          "HSNCode",
+          "VariantUID",
+          "LastTransUID",
+          "LastUniqueNumber",
+          "LastPurchaseDate",
+          "FinancialYear",
+          "UpdatedBy",
+          "UpdatedOn",
+        ]);
+    }
   }
 }
