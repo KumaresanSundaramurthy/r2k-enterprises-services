@@ -18,7 +18,7 @@ export class IndirectIncomeRepository extends EntryRecordsRepository {
       detailColumns: () => [],
       joinVendor: false,
       allHidesCancelled: false,
-      filtersByCategory: false,
+      filtersByCategory: true,
     });
   }
 }
