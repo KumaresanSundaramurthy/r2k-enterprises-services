@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { CustomersModule } from "../customers/customers.module";
 import { ProductMasterModule } from "../products/product-master.module";
 import { SettingsModule } from "../settings/settings.module";
+import { PackingListsRepository } from "../packing-lists/packing-lists.repository";
 import { VendorsModule } from "../vendors/vendors.module";
 import { CustomerNotesService } from "./customer-notes.service";
 import { DocumentEffectsService } from "./document-effects.service";
@@ -32,6 +33,7 @@ const shared = [TransactionEngineService, TransactionsRepository, DocumentEffect
     TransactionPrintService,
     TransactionSearchService,
     TransactionPrefixesService,
+    PackingListsRepository,
   ],
   exports: shared,
 })

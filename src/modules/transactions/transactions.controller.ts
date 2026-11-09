@@ -8,6 +8,8 @@ import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { CiValidationError, ciSuccess } from "../../core/response/ci-response";
 import { postInt } from "../../core/utils/form-values";
 import { AuditLogService } from "../../libraries/audit-log/audit-log.service";
+import { OrgSettingsService } from "../../core/org/org-settings.service";
+import { PackingListsRepository } from "../packing-lists/packing-lists.repository";
 import { AcceptForm } from "../products/product-files";
 import { TransactionEngineService } from "./transaction-engine.service";
 import { kindOf } from "./transaction-kinds";
@@ -24,6 +26,9 @@ import {
   TransDetailDto,
   TransListDto,
 } from "./transactions.dto";
+
+// CI3 Packinglists $pageModuleUID
+const PACKING_LIST_MODULE = 119;
 
 // Expense / indirect-income records keep their files in ExpenseIncomeAttachmentsTbl
 const ENTRY_SOURCES: Record<number, string> = { 114: "Expense", 115: "IndirectIncome" };
@@ -53,14 +58,23 @@ export class TransactionsController {
     private readonly search: TransactionSearchService,
     private readonly prefixes: TransactionPrefixesService,
     private readonly lookups: TransactionLookupsRepository,
-    private readonly audit: AuditLogService
+    private readonly audit: AuditLogService,
+    private readonly orgSettings: OrgSettingsService,
+    private readonly packingLists: PackingListsRepository
   ) {}
 
   @Get(["getPageDetails/:moduleUID", "getPageDetails/:moduleUID/:pageNo"])
-  @ApiParam({ name: "moduleUID", description: "101 Quotation, 102 Sales Order, 104 Purchase Order, 105 Purchase, 108 Purchase Return" })
+  @ApiParam({ name: "moduleUID", description: "101 Quotation, 102 Sales Order, 103 Invoice, 104 Purchase Order, 105 Purchase, 106 Sales Return, 108 Purchase Return, 112 Delivery Challan, 113 Pro Forma, 119 Packing List" })
   @ApiParam({ name: "pageNo", required: false, description: "1-based page number (or PageNo in the query)" })
   @ApiOperation({ summary: "A document list page (Data, TotalCount, PageNo, RowLimit, WhatsAppTemplate, SummaryStats when shown)" })
   async getPageDetails(@Param("moduleUID") moduleUID: string, @Param("pageNo") pageNo: string | undefined, @Query() dto: TransListDto) {
+    // Packing lists live in their own table (Transaction.PackingListTbl), not in TransactionsTbl
+    if (Number(moduleUID) === PACKING_LIST_MODULE) {
+      const page = pageOf(pageNo, dto);
+      const limit = await this.orgSettings.resolveRowLimit(dto.orgId, dto.RowLimit);
+      const [rows, total] = await Promise.all([this.packingLists.page(dto.orgId, limit, (page - 1) * limit), this.packingLists.count(dto.orgId)]);
+      return ciSuccess({ Data: rows, TotalCount: total, PageNo: page, RowLimit: limit });
+    }
     return ciSuccess(await this.engine.listPage(migratedKind(moduleUID), dto.orgId, dto.branchId, pageOf(pageNo, dto), dto.RowLimit, dto.Filter ?? {}, dto.langCode));
   }
 

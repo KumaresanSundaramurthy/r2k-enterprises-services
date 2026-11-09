@@ -34,6 +34,20 @@ export class PackingListsRepository extends BaseRepository {
 
   // getAll — the org's packing lists, newest first, with the source document's number and party
   all(orgUID: number): Promise<Row[]> {
+    return this.listQuery(orgUID);
+  }
+
+  // One page of the org's packing lists (transactions/getPageDetails/119), same rows and order as getAll
+  page(orgUID: number, limit: number, offset: number): Promise<Row[]> {
+    return this.listQuery(orgUID).limit(limit).offset(offset);
+  }
+
+  async count(orgUID: number): Promise<number> {
+    const row = await this.read("Transaction.PackingListTbl").count("* as cnt").where({ OrgUID: orgUID, IsDeleted: 0 }).first();
+    return Number(row?.cnt ?? 0);
+  }
+
+  private listQuery(orgUID: number): Knex.QueryBuilder {
     return this.read("Transaction.PackingListTbl as PL")
       .select(
         "PL.PackingListUID",
