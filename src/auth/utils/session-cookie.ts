@@ -23,6 +23,22 @@ export function clearSessionCookie(res: Response): void {
   res.clearCookie(sessionCookieName(), baseOptions());
 }
 
+export function refreshCookieName(): string {
+  return process.env.JWT_REFRESH_COOKIE_NAME || "r2k_refresh";
+}
+
+export function setRefreshCookie(res: Response, token: string, ttlSeconds: number): void {
+  res.cookie(refreshCookieName(), token, { ...baseOptions(), maxAge: ttlSeconds * 1000 });
+}
+
+export function clearRefreshCookie(res: Response): void {
+  res.clearCookie(refreshCookieName(), baseOptions());
+}
+
+export function readRefreshToken(req: Request): string | undefined {
+  return readCookie(req, refreshCookieName());
+}
+
 export function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.cookie;
   if (!header) return undefined;

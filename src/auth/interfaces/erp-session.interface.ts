@@ -43,3 +43,14 @@ export interface ErpSessionContext {
   token: string;
   data: ErpSessionPayload;
 }
+
+export interface ErpRefreshClaims {
+  type: "refresh";
+  key: string;
+  orgUID: number;
+  userUID: number;
+  jti: string;
+  iss?: string;
+  iat?: number;
+  exp?: number;
+}

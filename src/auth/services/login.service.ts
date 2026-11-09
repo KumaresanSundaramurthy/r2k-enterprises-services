@@ -32,6 +32,7 @@ export interface LoginResult {
   nextStep: LoginNextStep;
   message?: string;
   token?: string;
+  refreshToken?: string;
   expiresIn?: number;
   renewToken?: string;
   changeToken?: string;
@@ -180,6 +181,7 @@ export class LoginService {
     return {
       nextStep,
       token: session.token,
+      refreshToken: session.refreshToken,
       expiresIn: session.expiresIn,
       renewToken,
       user: this.toUserSummary(user),

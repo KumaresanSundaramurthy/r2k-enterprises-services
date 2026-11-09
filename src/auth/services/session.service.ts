@@ -21,8 +21,14 @@ interface BuiltSession {
 
 export interface CreatedSession {
   token: string;
+  refreshToken: string;
   expiresIn: number;
   redisKey: string;
+}
+
+export interface RefreshedTokens {
+  token: string;
+  refreshToken: string;
 }
 
 const USER_CACHE_TYPES = ["menus", "submenus", "modules", "permissions", "settings", "userinfo"];
@@ -89,7 +95,10 @@ export class SessionService {
     await this.redis.set(this.redis.envKey(`UserActiveSession_${userUID}`), sessionToken, ttl);
     await this.writeUserCaches(userUID, orgToken, built, user, ttl);
 
-    return { token: this.tokens.signSession(redisKey), expiresIn: ttl, redisKey };
+    const { token: refreshToken, jti } = this.tokens.signRefreshToken(redisKey, toInt(user.UserOrgUID), userUID);
+    await this.upstash.set(this.redis.envKey(`rt-sess-${userUID}`), { jti }, ttl);
+
+    return { token: this.tokens.signSession(redisKey), refreshToken, expiresIn: this.tokens.jwtTtlSeconds, redisKey };
   }
 
   // Auth::refreshTokens + Globalservice::refreshUserCache — re-reads role menus, permissions and the session payload.
@@ -119,6 +128,32 @@ export class SessionService {
     await this.redis.del(this.redis.orgKey("org-info", orgToken));
   }
 
+  /* Validates a refresh token against the Upstash hash and issues a new short JWT + rotated refresh token. */
+  async refreshTokens(refreshToken: string): Promise<RefreshedTokens> {
+    const claims = this.tokens.verifyRefreshToken(refreshToken);
+    const userUID = claims.userUID;
+
+    const stored = await this.upstash.get<{ jti: string }>(this.redis.envKey(`rt-sess-${userUID}`));
+    if (!stored || stored.jti !== claims.jti) {
+      throw new Error("Refresh token has been revoked. Please sign in again.");
+    }
+
+    const data = await this.redis.get<ErpSessionPayload>(claims.key);
+    if (!data || !data.User) {
+      throw new Error("Session not found. Please sign in again.");
+    }
+
+    const ttl = this.tokens.sessionTtlSeconds;
+    const newJwt = this.tokens.signSession(claims.key);
+    const { token: newRefresh, jti: newJti } = this.tokens.signRefreshToken(claims.key, claims.orgUID, userUID);
+
+    await this.upstash.set(this.redis.envKey(`rt-sess-${userUID}`), { jti: newJti }, ttl);
+    // Extend Redis session TTL so it lives as long as the new refresh token.
+    await this.redis.set(claims.key, data, ttl);
+
+    return { token: newJwt, refreshToken: newRefresh };
+  }
+
   // Login::logout — closes the audit row, revokes the single-session token and clears user/org caches.
   async destroySession(redisKey: string): Promise<void> {
     const data = await this.redis.get<ErpSessionPayload>(redisKey);
@@ -133,6 +168,7 @@ export class SessionService {
       if (userUID > 0) {
         await this.revokeActiveSession(userUID);
         await this.redis.del(...USER_CACHE_TYPES.map((type) => this.redis.userKey(type, userUID, orgToken)));
+        await this.upstash.del(this.redis.envKey(`rt-sess-${userUID}`)).catch(() => undefined);
       }
 
       const roleUID = toInt(data.User.RoleUID);
@@ -154,6 +190,7 @@ export class SessionService {
   // Ends whatever session the user currently has (after a password change or reset).
   async revokeActiveSession(userUID: number): Promise<void> {
     await this.redis.del(this.redis.envKey(`UserActiveSession_${userUID}`));
+    await this.upstash.del(this.redis.envKey(`rt-sess-${userUID}`)).catch(() => undefined);
     await this.userRepository.clearSessionToken(userUID);
   }
 

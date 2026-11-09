@@ -52,7 +52,9 @@ export class ErpSessionGuard implements CanActivate {
     try {
       key = this.tokens.verifySession(token).key;
     } catch (err) {
-      if (err instanceof TokenExpiredError) throw sessionExpired();
+      if (err instanceof TokenExpiredError) {
+        throw new UnauthorizedException({ message: "Your session token has expired. Please refresh.", tokenExpired: true });
+      }
       throw sessionExpired("Invalid session. Please sign in again.");
     }
 

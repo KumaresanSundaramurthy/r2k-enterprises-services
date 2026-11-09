@@ -9,7 +9,7 @@ import { AuthTokenService } from "../services/auth-token.service";
 import { LoginService } from "../services/login.service";
 import { SessionService } from "../services/session.service";
 import { getRequestMeta } from "../utils/device-info";
-import { clearSessionCookie, readSessionToken, setSessionCookie } from "../utils/session-cookie";
+import { clearRefreshCookie, clearSessionCookie, readRefreshToken, readSessionToken, setRefreshCookie, setSessionCookie } from "../utils/session-cookie";
 
 @ApiTags("Auth")
 @Controller("api/auth")
@@ -46,7 +46,11 @@ export class AuthController {
     if (result.token && result.expiresIn) {
       setSessionCookie(res, result.token, result.expiresIn);
     }
-    return result;
+    if (result.refreshToken) {
+      setRefreshCookie(res, result.refreshToken, this.tokens.sessionTtlSeconds);
+    }
+    const { refreshToken: _rt, ...safeResult } = result;
+    return safeResult;
   }
 
   @Post("logout")
@@ -64,7 +68,27 @@ export class AuthController {
       }
     }
     clearSessionCookie(res);
+    clearRefreshCookie(res);
     return { message: "Logged out." };
+  }
+
+  @Post("login/refresh")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Token refresh — issue new short-lived JWT from a valid refresh token",
+    description:
+      "Reads the HttpOnly refresh cookie, validates it against the Upstash session hash, and issues a new " +
+      "short-lived JWT (and rotated refresh token). Call this when a services request returns 401 tokenExpired.",
+  })
+  async tokenRefresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = readRefreshToken(req);
+    if (!refreshToken) {
+      return { error: true, message: "No refresh token. Please sign in again.", sessionExpired: true };
+    }
+    const tokens = await this.sessionService.refreshTokens(refreshToken);
+    setSessionCookie(res, tokens.token, this.tokens.jwtTtlSeconds);
+    setRefreshCookie(res, tokens.refreshToken, this.tokens.sessionTtlSeconds);
+    return { ok: true, token: tokens.token };
   }
 
   @Post("refresh")
