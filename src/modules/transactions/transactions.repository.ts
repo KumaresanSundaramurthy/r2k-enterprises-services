@@ -145,6 +145,49 @@ export class TransactionsRepository extends BaseRepository {
     return query;
   }
 
+  /**
+   * getTransactionExportData — every document matching the list filters, newest first, with the columns the list
+   * export offers (amounts, party contact, reference, paid amount and payment modes).
+   */
+  exportRows(orgUID: number, moduleUID: number, filter: TransFilter): Promise<Row[]> {
+    const k = this.read;
+    return this.base(orgUID, moduleUID, filter)
+      .select(
+        "Ts.TransUID",
+        "Ts.UniqueNumber",
+        "Ts.TransDate",
+        "Ts.DocStatus as Status",
+        "Ts.NetAmount",
+        "Ts.SubTotal",
+        "Ts.TaxAmount",
+        "Ts.DiscountAmount",
+        "Ts.CgstAmount",
+        "Ts.SgstAmount",
+        "Ts.IgstAmount",
+        "Ts.RoundOff",
+        k.raw("COALESCE(??, ??) AS ??", ["Cust.Name", "Vend.Name", "PartyName"]),
+        k.raw("COALESCE(??, ??) AS ??", ["Cust.Area", "Vend.Area", "PartyArea"]),
+        k.raw("COALESCE(??, ??) AS ??", ["Cust.MobileNumber", "Vend.MobileNumber", "MobileNumber"]),
+        k.raw("COALESCE(??, ??) AS ??", ["Cust.EmailAddress", "Vend.EmailAddress", "EmailAddress"]),
+        "Td.ValidityDate",
+        "Td.Reference",
+        "Td.SupplierInvoiceNo",
+        k.raw("CONCAT(??, ' ', ??) AS ??", ["User.FirstName", "User.LastName", "UpdatedBy"]),
+        k.raw("CONCAT(??, ' ', ??) AS ??", ["CUser.FirstName", "CUser.LastName", "CreatedBy"]),
+        "Ts.UpdatedOn",
+        k.raw(`${PAID_BY("Ts")} AS PaidAmount`),
+        k.raw(
+          `IFNULL((SELECT GROUP_CONCAT(DISTINCT PT.Name ORDER BY P.PaymentUID ASC SEPARATOR ', ') FROM Transaction.PaymentsTbl P
+            JOIN Global.PaymentTypesTbl PT ON PT.PaymentTypeUID = P.PaymentTypeUID
+            WHERE P.TransUID = Ts.TransUID AND P.IsDeleted = 0 AND P.IsActive = 1 AND P.IsCancelled = 0 AND ${OWN_PAYMENT}), '') AS PaymentModes`
+        )
+      )
+      .leftJoin("Transaction.TransDetailTbl as Td", (on) => on.on("Td.TransUID", "Ts.TransUID").andOn(k.raw("?? = YEAR(??)", ["Td.FinancialYear", "Ts.TransDate"])))
+      .leftJoin("Users.UserTbl as User", "User.UserUID", "Ts.UpdatedBy")
+      .leftJoin("Users.UserTbl as CUser", "CUser.UserUID", "Ts.CreatedBy")
+      .orderBy("Ts.TransDate", "desc");
+  }
+
   async count(orgUID: number, moduleUID: number, filter: TransFilter): Promise<number> {
     const row = await this.base(orgUID, moduleUID, filter).count("* as cnt").first();
     return Number(row?.cnt ?? 0);
