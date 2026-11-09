@@ -38,6 +38,7 @@ import { SalesReturnsModule } from "./modules/sales-returns/sales-returns.module
 import { DeliveryChallansModule } from "./modules/delivery-challans/delivery-challans.module";
 import { ProformaInvoicesModule } from "./modules/proforma-invoices/proforma-invoices.module";
 import { PackingListsModule } from "./modules/packing-lists/packing-lists.module";
+import { DashboardModule } from "./modules/dashboard/dashboard.module";
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { PackingListsModule } from "./modules/packing-lists/packing-lists.module
     DeliveryChallansModule,
     ProformaInvoicesModule,
     PackingListsModule,
+    DashboardModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,
