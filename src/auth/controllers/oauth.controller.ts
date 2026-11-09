@@ -6,7 +6,8 @@ import { LoginResult } from "../services/login.service";
 import { OAuthProvider, OAuthService } from "../services/oauth.service";
 import { appUrl } from "../utils/app-url";
 import { getRequestMeta } from "../utils/device-info";
-import { readCookie, setSessionCookie } from "../utils/session-cookie";
+import { readCookie, setRefreshCookie, setSessionCookie } from "../utils/session-cookie";
+import { AuthTokenService } from "../services/auth-token.service";
 
 const STATE_COOKIE = "r2k_oauth_state";
 
@@ -28,7 +29,10 @@ function nextStepPath(result: LoginResult): string {
 export class OAuthController {
   private readonly logger = new Logger(OAuthController.name);
 
-  constructor(private readonly oauthService: OAuthService) {}
+  constructor(
+    private readonly oauthService: OAuthService,
+    private readonly tokens: AuthTokenService
+  ) {}
 
   @Get("google")
   @ApiOperation({ summary: "Start Google sign-in (browser redirect)" })
@@ -126,6 +130,10 @@ export class OAuthController {
 
   private withSessionCookie(res: Response, result: LoginResult): LoginResult {
     if (result.token && result.expiresIn) setSessionCookie(res, result.token, result.expiresIn);
+    if (result.refreshToken) {
+      setRefreshCookie(res, result.refreshToken, this.tokens.sessionTtlSeconds);
+      delete result.refreshToken;
+    }
     return result;
   }
 

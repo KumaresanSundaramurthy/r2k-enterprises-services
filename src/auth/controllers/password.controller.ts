@@ -13,7 +13,7 @@ import { AllowSessionGates, ErpSessionGuard } from "../guards/erp-session.guard"
 import { ErpSessionContext } from "../interfaces/erp-session.interface";
 import { PasswordService } from "../services/password.service";
 import { getRequestMeta } from "../utils/device-info";
-import { clearSessionCookie } from "../utils/session-cookie";
+import { clearRefreshCookie, clearSessionCookie } from "../utils/session-cookie";
 
 @ApiTags("Auth — Password")
 @Controller("api/auth/password")
@@ -63,6 +63,7 @@ export class PasswordController {
   ) {
     const result = await this.passwordService.change(session, dto.oldPassword, dto.newPassword, dto.confirmPassword);
     clearSessionCookie(res);
+    clearRefreshCookie(res);
     return result;
   }
 
