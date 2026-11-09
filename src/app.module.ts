@@ -41,6 +41,7 @@ import { PackingListsModule } from "./modules/packing-lists/packing-lists.module
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { StorageModule } from "./modules/storage/storage.module";
 import { ExportsModule } from "./modules/exports/exports.module";
+import { GloballyModule } from "./modules/globally/globally.module";
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { ExportsModule } from "./modules/exports/exports.module";
     DashboardModule,
     StorageModule,
     ExportsModule,
+    GloballyModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

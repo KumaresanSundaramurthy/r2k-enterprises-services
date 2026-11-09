@@ -29,6 +29,15 @@ export class LocationService {
       .orderBy("name", "asc");
   }
 
+  // getCitiesOfStateFromDB — cities of one state (country + state ISO2)
+  async citiesOfState(countryISO2: string, stateISO2: string): Promise<Record<string, unknown>[]> {
+    return this.db
+      .read("Global.CitiesTbl")
+      .select("id", "name")
+      .where({ country_code: countryISO2.trim().toUpperCase(), state_code: stateISO2.trim().toUpperCase(), flag: 1 })
+      .orderBy("name", "asc");
+  }
+
   // The organisation's country (CI3 JwtData->Org->OrgCISO2)
   async orgCountryISO2(orgUID: number): Promise<string> {
     const row = await this.db.read("Organisation.OrganisationTbl").select("CountryISO2").where({ OrgUID: orgUID }).first();
