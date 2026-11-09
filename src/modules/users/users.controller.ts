@@ -188,8 +188,12 @@ export class UsersController {
     return ciSuccess(await this.users.getEmployees(dto.orgId));
   }
 
+  // Users_model::getOrgUsersForCache — called by the CI3 app in place of the model function
   @Get("getOrgUsers")
-  @ApiExcludeEndpoint()
+  @ApiOperation({
+    summary: "Active login users of the org, by first name (Users [{UserUID, FirstName, LastName, FullName}])",
+    description: "Served from the org-users Redis cache; rebuilt from the DB when the cache is missing or empty.",
+  })
   async getOrgUsers(@Query() dto: OrgContextDto) {
     return ciSuccess(await this.users.getLoginUsers(dto.orgId));
   }
