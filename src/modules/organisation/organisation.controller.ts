@@ -29,7 +29,7 @@ export class OrganisationController {
   @Get("getOrgInfo")
   @ApiOperation({ summary: "Org receipt header from cache: Name, BrandName, Logo, GSTIN, Mobile, Email, billing address (no DevPassword)" })
   async getOrgInfo(@Query() dto: OrgContextDto) {
-    return ciSuccess(await this.orgInfoCache.get(dto.orgId));
+    return ciSuccess((await this.orgInfoCache.get(dto.orgId)) ?? {});
   }
 
   @Get("getOrganisationDetails")
