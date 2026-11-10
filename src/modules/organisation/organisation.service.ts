@@ -1,11 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import { resolveCdnUrl } from "../../common/utils/php-compat";
+import { RedisService } from "../../common/redis/redis.service";
 import { OrganisationRepository, Row } from "./organisation.repository";
 
 // Read side of the CI3 Organisation controller (Settings → Organisation page).
 @Injectable()
 export class OrganisationService {
-  constructor(private readonly repo: OrganisationRepository) {}
+  constructor(
+    private readonly repo: OrganisationRepository,
+    private readonly redis: RedisService
+  ) {}
 
   // index — what the CI3 page renders: the organisation (EditOrgData), its billing address and shipping addresses
   async getPageData(orgUID: number) {
@@ -33,6 +37,17 @@ export class OrganisationService {
 
   async getBusRegTypes() {
     return { Data: await this.repo.lookup("OrgBusinessRegTypeTbl", "OrgBusRegTypeUID") };
+  }
+
+  // getAllOrgDispatchAddresses — shipping addresses with org name, Redis-cached under org-dispatch-addresses-shipping
+  async getDispatchAddresses(orgUID: number): Promise<Row[]> {
+    const orgToken = await this.repo.orgToken(orgUID);
+    const key = orgToken ? this.redis.orgKey("org-dispatch-addresses-shipping", orgToken) : `org-dispatch-addresses-shipping-${orgUID}`;
+    const cached = await this.redis.get<Row[]>(key);
+    if (cached) return cached;
+    const addresses = await this.repo.dispatchAddresses(orgUID);
+    await this.redis.set(key, addresses, Number(process.env.LOGIN_EXPIRE_SECS) || 86400);
+    return addresses;
   }
 
   // CI3 mapOrganisationAddress($row, 'B', 'Billing') — null when there is no billing address

@@ -44,6 +44,16 @@ export class PrintThemesRepository extends BaseRepository {
     return row ?? null;
   }
 
+  // getPrintThemeByType — theme config + template HTML/preview for rendering PDFs
+  async themeByTypeWithTemplate(orgUID: number, transactionType: string): Promise<Row | null> {
+    const row = await this.read(`${THEMES} as TC`)
+      .select("TC.*", "PT.HtmlContent as TemplateHtmlContent", "PT.PreviewImage as TemplatePreviewImage", "PT.TemplateName as TemplateName")
+      .leftJoin(`${TEMPLATES} as PT`, (on) => on.on("PT.TemplateUID", "TC.TemplateUID").andOnVal("PT.IsDeleted", "=", 0))
+      .where({ "TC.OrgUID": orgUID, "TC.TransactionType": transactionType, "TC.IsDeleted": 0 })
+      .first();
+    return row ?? null;
+  }
+
   // getPrintTemplatesPaginated — Search matches the template name
   async templatesPage(limit: number, offset: number, search: string): Promise<{ rows: Row[]; totalCount: number }> {
     const base = () => {

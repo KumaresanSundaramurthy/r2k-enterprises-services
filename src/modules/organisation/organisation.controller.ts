@@ -20,12 +20,21 @@ import { OrganisationService } from "./organisation.service";
 @UseFilters(CiExceptionFilter)
 @Controller("api/organisation")
 export class OrganisationPublicController {
-  constructor(private readonly orgInfoCache: OrgInfoCacheService) {}
+  constructor(
+    private readonly orgInfoCache: OrgInfoCacheService,
+    private readonly organisation: OrganisationService
+  ) {}
 
   @Get("getOrgInfo")
   @ApiOperation({ summary: "Org receipt header from cache: Name, BrandName, Logo, GSTIN, Mobile, Email, billing address (no DevPassword)" })
   async getOrgInfo(@Query() dto: OrgContextDto) {
     return ciSuccess((await this.orgInfoCache.get(dto.orgId)) ?? {});
+  }
+
+  @Get("getDispatchAddresses")
+  @ApiOperation({ summary: "Shipping dispatch addresses for transaction forms (Redis-cached)" })
+  async getDispatchAddresses(@Query() dto: OrgContextDto) {
+    return ciSuccess(await this.organisation.getDispatchAddresses(dto.orgId));
   }
 }
 
@@ -49,7 +58,7 @@ export class OrganisationController {
   async verifyDevPassword(@Body() dto: VerifyDevPasswordDto) {
     const ok = await this.orgInfoCache.verifyDevPassword(dto.orgId, String(dto.password ?? ""));
     if (!ok) throw new Error("Developer password is not configured or does not match.");
-    return ciSuccess(null);
+    return ciSuccess({});
   }
 
   @Get("getOrganisationDetails")

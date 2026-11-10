@@ -12,6 +12,10 @@ import { postInt } from "../../core/utils/form-values";
 import { AcceptForm } from "../products/product-files";
 import { PrintThemesService } from "./print-themes.service";
 
+export class ThemeByTypeDto extends OrgContextDto {
+  @ApiProperty({ description: "Transaction type name (e.g. Invoice, Payment, Quotation)" }) @Allow() transactionType?: string;
+}
+
 export class PrintListDto extends OrgPagedListDto {
   @ApiPropertyOptional({ description: "1-based page number (default 1)" }) @Allow() PageNo?: string | number;
 }
@@ -69,6 +73,21 @@ export class TemplateFormDto extends OrgUserContextDto {
 }
 
 const pageOf = (dto: PrintListDto) => Math.max(1, postInt(dto, "PageNo") || 1);
+
+/* Public (no JWT) — CI3 Doc / Pay / Receipt and Transactions_model PDF functions call this
+   server-to-server without a user JWT cookie. */
+@ApiTags("Print Templates")
+@UseFilters(CiExceptionFilter)
+@Controller("api/printthemes")
+export class PrintThemesPublicController {
+  constructor(private readonly themes: PrintThemesService) {}
+
+  @Get("getPrintThemeByType")
+  @ApiOperation({ summary: "Theme config + template HTML/preview for a transaction type (no JWT — used by Doc, Transactions_model PDF, etc.)" })
+  async getPrintThemeByType(@Query() dto: ThemeByTypeDto) {
+    return ciSuccess(await this.themes.getThemeByType(dto.orgId, String(dto.transactionType ?? "")));
+  }
+}
 
 // Settings → Print Templates page of CI3 (Printthemes controller), same method names as its JS calls.
 @ApiTags("Print Templates")

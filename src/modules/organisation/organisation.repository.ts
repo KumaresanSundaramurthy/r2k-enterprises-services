@@ -94,6 +94,20 @@ export class OrganisationRepository extends BaseRepository {
     return row?.Name ?? "";
   }
 
+  async orgToken(orgUID: number): Promise<string> {
+    const row = await this.read("Organisation.OrganisationTbl").select("OrgToken").where({ OrgUID: orgUID }).first();
+    return String(row?.OrgToken ?? "");
+  }
+
+  // getAllOrgDispatchAddresses — shipping addresses with org name, for transaction dispatch dropdowns
+  async dispatchAddresses(orgUID: number): Promise<Row[]> {
+    return this.read("Organisation.OrgAddressTbl as a")
+      .select("a.OrgAddressUID", "a.OrgUID", "a.AddressType", "a.Line1", "a.Line2", "a.Pincode", "a.City", "a.CityText", "a.State", "a.StateText", "o.Name as OrgName")
+      .leftJoin("Organisation.OrganisationTbl as o", "o.OrgUID", "a.OrgUID")
+      .where({ "a.OrgUID": orgUID, "a.AddressType": "Shipping", "a.IsActive": 1, "a.IsDeleted": 0 })
+      .orderBy("a.OrgAddressUID", "asc");
+  }
+
   async updateOrganisation(orgUID: number, data: Row): Promise<void> {
     await this.db.write("Organisation.OrganisationTbl").where({ OrgUID: orgUID }).update(data);
   }

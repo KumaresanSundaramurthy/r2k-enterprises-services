@@ -25,6 +25,10 @@ const SYSTEM_LEDGERS = {
   cgstOutput: "SYS-CGST-OUT",
   sgstOutput: "SYS-SGST-OUT",
   igstOutput: "SYS-IGST-OUT",
+  salaryExpense: "SYS-SALARY-EXP",
+  salaryPayable: "SYS-SALARY-PAY",
+  // Employee Advances (asset): Dr when an advance is approved, Cr when payroll recovers it (CI3 advance_clearing too)
+  employeeAdvance: "SYS-EMP-ADV",
 } as const;
 
 export type JournalSide = "Debit" | "Credit";
@@ -301,11 +305,13 @@ export class JournalService {
   }
 
   // postIndirectIncomeJournal — Dr Accounts Receivable, Cr Indirect Income
-  async postIndirectIncome(trx: Knex.Transaction, income: RecordJournal): Promise<void> {
+  // referenceType: "RentalPayment" for a rental payment — CI3 posted those as IndirectIncome with the payment's UID,
+  // which collides with the indirect income record of the same UID (reversing one reversed both)
+  async postIndirectIncome(trx: Knex.Transaction, income: RecordJournal, referenceType: "IndirectIncome" | "RentalPayment" = "IndirectIncome"): Promise<void> {
     const net = phpRound(income.netAmount, DECIMALS);
     if (net <= 0) return;
     const ref = income.number || `#${income.recordUID}`;
-    const header = JournalService.recordHeader(income, "IndirectIncome", `Indirect Income ${ref}`);
+    const header = JournalService.recordHeader(income, referenceType, `Indirect Income ${ref}`);
     const journalUID = await this.createHeader(trx, header);
     const receivable = await this.repo.systemLedgerUID(trx, income.orgUID, SYSTEM_LEDGERS.accountsReceivable);
     if (receivable) await this.addLine(trx, header, journalUID, receivable, "Debit", net, `Income receivable — ${ref}`);
@@ -462,6 +468,65 @@ export class JournalService {
         entityType: "Vendor",
         userUID,
       });
+    }
+  }
+
+  // postAdvanceJournal — salary advance approved: Dr Employee Advances, Cr Accounts Payable (the cash paid out)
+  async postSalaryAdvance(trx: Knex.Transaction, orgUID: number, advanceUID: number, date: string, amount: number, userUID: number): Promise<void> {
+    const value = phpRound(amount, DECIMALS);
+    if (value <= 0) return;
+    const header: JournalHeader = {
+      orgUID,
+      date,
+      financialYear: Number(date.slice(0, 4)),
+      referenceType: "SalaryAdvance",
+      referenceID: advanceUID,
+      referenceNo: `ADV-${advanceUID}`,
+      narration: `Salary advance approved — Advance #${advanceUID}`,
+      userUID,
+    };
+    const journalUID = await this.createHeader(trx, header);
+    const advance = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.employeeAdvance);
+    if (advance) await this.addLine(trx, header, journalUID, advance, "Debit", value, `Advance given to employee — #${advanceUID}`);
+    const payable = await this.repo.systemLedgerUID(trx, orgUID, SYSTEM_LEDGERS.accountsPayable);
+    if (payable) await this.addLine(trx, header, journalUID, payable, "Credit", value, `Cash/bank paid for advance #${advanceUID}`);
+  }
+
+  /**
+   * postPayrollJournal — Dr Salary & Wages Expense (gross); Cr Salary Payable (net), Cr Employee Advances (advance
+   * recovered) and Cr Accounts Payable (the other deductions). Dated the last day of the payroll month.
+   */
+  async postPayroll(
+    trx: Knex.Transaction,
+    run: { orgUID: number; payrollUID: number; date: string; monthName: string; gross: number; net: number; deductions: number; advanceRecovery: number; userUID: number }
+  ): Promise<void> {
+    const gross = phpRound(run.gross, DECIMALS);
+    if (gross <= 0) return;
+    const { orgUID, payrollUID } = run;
+    const header: JournalHeader = {
+      orgUID,
+      date: run.date,
+      financialYear: Number(run.date.slice(0, 4)),
+      referenceType: "Payroll",
+      referenceID: payrollUID,
+      referenceNo: `PAY-${payrollUID}`,
+      // CI3 named every run "January <year>" (it formatted 1 January of the year)
+      narration: `Payroll processed for ${run.monthName}`,
+      userUID: run.userUID,
+    };
+    const journalUID = await this.createHeader(trx, header);
+    const ledger = (code: string) => this.repo.systemLedgerUID(trx, orgUID, code);
+
+    const expense = await ledger(SYSTEM_LEDGERS.salaryExpense);
+    if (expense) await this.addLine(trx, header, journalUID, expense, "Debit", gross, `Salary expense for payroll #${payrollUID}`);
+    const payable = await ledger(SYSTEM_LEDGERS.salaryPayable);
+    if (payable && run.net > 0) await this.addLine(trx, header, journalUID, payable, "Credit", run.net, `Net salary payable — payroll #${payrollUID}`);
+    const advance = await ledger(SYSTEM_LEDGERS.employeeAdvance);
+    if (advance && run.advanceRecovery > 0) await this.addLine(trx, header, journalUID, advance, "Credit", run.advanceRecovery, `Advance recovery — payroll #${payrollUID}`);
+    const otherDeductions = phpRound(run.deductions - run.advanceRecovery, DECIMALS);
+    const accountsPayable = await ledger(SYSTEM_LEDGERS.accountsPayable);
+    if (accountsPayable && otherDeductions > 0) {
+      await this.addLine(trx, header, journalUID, accountsPayable, "Credit", otherDeductions, `Salary deductions (PF/ESI/TDS) — payroll #${payrollUID}`);
     }
   }
 

@@ -159,6 +159,11 @@ export class PrintThemesService {
     return { Message: "Template saved successfully." };
   }
 
+  // getPrintThemeByType — theme config + template HTML for PDF rendering; called by public Doc/Receipt pages
+  async getThemeByType(orgUID: number, transactionType: string) {
+    return { Data: await this.repo.themeByTypeWithTemplate(orgUID, transactionType) };
+  }
+
   // deleteTemplate
   async deleteTemplate(templateUID: number) {
     if (templateUID <= 0) throw new CiValidationError("Invalid template.");
