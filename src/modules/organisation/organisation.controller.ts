@@ -9,6 +9,7 @@ import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { AcceptForm, FileFields } from "../products/product-files";
 import { OrganisationFormDto, ShipAddressDto, ShipAddressUpdateDto } from "./dto/organisation.dto";
+import { OrgInfoCacheService } from "../../libraries/org-info-cache/org-info-cache.service";
 import { OrganisationWriteService } from "./organisation-write.service";
 import { OrganisationService } from "./organisation.service";
 
@@ -21,8 +22,15 @@ import { OrganisationService } from "./organisation.service";
 export class OrganisationController {
   constructor(
     private readonly organisation: OrganisationService,
-    private readonly writes: OrganisationWriteService
+    private readonly writes: OrganisationWriteService,
+    private readonly orgInfoCache: OrgInfoCacheService
   ) {}
+
+  @Get("getOrgInfo")
+  @ApiOperation({ summary: "Org receipt header from cache: Name, BrandName, Logo, GSTIN, Mobile, Email, billing address (no DevPassword)" })
+  async getOrgInfo(@Query() dto: OrgContextDto) {
+    return ciSuccess(await this.orgInfoCache.get(dto.orgId));
+  }
 
   @Get("getOrganisationDetails")
   @ApiOperation({ summary: "Page data: EditOrgData (Logo as CDN URL), BillOrgAddrData, ShipOrgAddrList, MaxShippingAddr" })

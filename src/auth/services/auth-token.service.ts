@@ -26,9 +26,8 @@ export class AuthTokenService {
     return Number(process.env.LOGIN_EXPIRE_SECS) || 7200;
   }
 
-  /* Short-lived JWT TTL — 30 minutes by default. */
   get jwtTtlSeconds(): number {
-    return Number(process.env.JWT_TTL_SECS) || 1800;
+    return this.sessionTtlSeconds;
   }
 
   signSession(redisKey: string): string {

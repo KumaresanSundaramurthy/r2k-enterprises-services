@@ -22,6 +22,7 @@ export class ProductProfileRepository extends BaseRepository {
       .select(
         "P.ProductUID as ProductUID",
         this.langColumn(useLang, "PTL.ItemName", "P.ItemName", "ItemName"),
+        "P.IsActive as IsActive",
         "P.PartNumber as PartNumber",
         "P.SKU as SKU",
         "P.ProductType as ProductType",
