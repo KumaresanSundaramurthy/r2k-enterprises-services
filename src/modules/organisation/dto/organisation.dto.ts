@@ -61,3 +61,7 @@ export class ShipAddressDto extends OrgUserContextDto {
 export class ShipAddressUpdateDto extends ShipAddressDto {
   @ApiProperty({ type: Number }) @Allow() OrgAddressUID?: string | number;
 }
+
+export class VerifyDevPasswordDto extends OrgUserContextDto {
+  @ApiProperty({ description: "Plain-text password entered by the developer" }) @Allow() password?: string;
+}

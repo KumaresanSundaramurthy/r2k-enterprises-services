@@ -26,6 +26,22 @@ export class OrgInfoCacheService {
     }
   }
 
+  // Verifies the entered plain-text password against the base64-encoded DevPassword stored for this org.
+  async verifyDevPassword(orgUID: number, entered: string): Promise<boolean> {
+    const info = await this.receiptInfo(orgUID);
+    if (!info) return false;
+    const key = info.OrgToken ? this.redis.orgKey("org-info", String(info.OrgToken)) : `org-info-${orgUID}`;
+    let cached = await this.redis.get<Record<string, unknown>>(key);
+    if (!cached) {
+      cached = { ...info, Logo: resolveCdnUrl(String(info.Logo ?? "")) };
+      await this.redis.set(key, cached, Number(process.env.LOGIN_EXPIRE_SECS) || 86400);
+    }
+    const stored = String(cached.DevPassword ?? "");
+    if (!stored) return false;
+    const decoded = Buffer.from(stored, "base64").toString("utf8");
+    return decoded === entered;
+  }
+
   // getOrgInfoCached — the cached header (built on a miss), for page previews; DevPassword is left out
   async get(orgUID: number): Promise<Record<string, unknown> | null> {
     const info = await this.receiptInfo(orgUID);

@@ -9,7 +9,7 @@ import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { OrgInfoCacheService } from "../../libraries/org-info-cache/org-info-cache.service";
 import { AcceptForm, FileFields } from "../products/product-files";
-import { OrganisationFormDto, ShipAddressDto, ShipAddressUpdateDto } from "./dto/organisation.dto";
+import { OrganisationFormDto, ShipAddressDto, ShipAddressUpdateDto, VerifyDevPasswordDto } from "./dto/organisation.dto";
 import { OrganisationWriteService } from "./organisation-write.service";
 import { OrganisationService } from "./organisation.service";
 
@@ -38,8 +38,19 @@ export class OrganisationPublicController {
 export class OrganisationController {
   constructor(
     private readonly organisation: OrganisationService,
-    private readonly writes: OrganisationWriteService
+    private readonly writes: OrganisationWriteService,
+    private readonly orgInfoCache: OrgInfoCacheService
   ) {}
+
+  @Post("verifyDevPassword")
+  @HttpCode(HttpStatus.OK)
+  @AcceptForm()
+  @ApiOperation({ summary: "Verifies the developer password for Cachemonitor — returns {Error:false} on match, throws on mismatch (DevPassword never sent to CI3)" })
+  async verifyDevPassword(@Body() dto: VerifyDevPasswordDto) {
+    const ok = await this.orgInfoCache.verifyDevPassword(dto.orgId, String(dto.password ?? ""));
+    if (!ok) throw new Error("Developer password is not configured or does not match.");
+    return ciSuccess(null);
+  }
 
   @Get("getOrganisationDetails")
   @ApiOperation({ summary: "Page data: EditOrgData (Logo as CDN URL), BillOrgAddrData, ShipOrgAddrList, MaxShippingAddr" })
