@@ -114,6 +114,31 @@ export class PayrollRepository extends BaseRepository {
     return (row as Row | undefined) ?? null;
   }
 
+  // Payroll_model::getPayrollByUID for the CI3 app — every column of the live run, as CI3's SELECT *
+  async payrollRecord(orgUID: number, payrollUID: number): Promise<Row | null> {
+    const k = this.read;
+    const row = await k("Transaction.PayrollTbl")
+      .select(
+        "PayrollUID", "OrgUID", "BranchUID", "PayrollMonth", "PayrollYear", "PayrollStatus",
+        "TotalEmployees", "TotalGrossSalary", "TotalDeductions", "TotalNetSalary", "Notes", "ProcessedOn",
+        k.raw("CAST(?? AS UNSIGNED) AS ??", ["IsDeleted", "IsDeleted"]),
+        k.raw("CAST(?? AS UNSIGNED) AS ??", ["IsActive", "IsActive"]),
+        "CreatedBy", "UpdatedBy", "CreatedOn", "UpdatedOn"
+      )
+      .where({ PayrollUID: payrollUID, OrgUID: orgUID, IsDeleted: 0 })
+      .first();
+    return (row as Row | undefined) ?? null;
+  }
+
+  // Payroll_model::getPayrollExists for the CI3 app — the live (not deleted) run of the org / branch / month
+  async livePayrollOfMonth(orgUID: number, branchUID: number, month: number, year: number): Promise<Row | null> {
+    const row = await this.read("Transaction.PayrollTbl")
+      .select("PayrollUID", "PayrollStatus")
+      .where({ OrgUID: orgUID, BranchUID: branchUID, PayrollMonth: month, PayrollYear: year, IsDeleted: 0 })
+      .first();
+    return (row as Row | undefined) ?? null;
+  }
+
   /**
    * getPayrollExists — the run of the org / branch / month, deleted ones included: the unique key covers deleted
    * rows, so a month whose payroll was deleted is processed again on that same row (CI3 failed to insert it).

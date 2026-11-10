@@ -9,7 +9,7 @@ import { CreditSettingsService } from "../../libraries/credit-settings/credit-se
 import { CurlService } from "../../libraries/curl/curl.service";
 import { LocationService } from "../../libraries/location/location.service";
 import { OrgInfoCacheService } from "../../libraries/org-info-cache/org-info-cache.service";
-import { GloballyRepository } from "./globally.repository";
+import { GloballyRepository, SINGLE_ROW_TABLES } from "./globally.repository";
 
 type Row = Record<string, unknown>;
 type Context = Record<string, string | number>;
@@ -87,6 +87,47 @@ export class GloballyService {
     const code = countryCode.trim().toUpperCase();
     if (!code) throw new CiValidationError("Country Code information is missing.");
     return { Message: "Data Retrieved Successfully", Data: await this.location.cities(code) };
+  }
+
+  /**
+   * Global_model::getSingleRow(dbName, table, where, select) — the first matching row, or null.
+   * Only tables in SINGLE_ROW_TABLES, only their listed columns, and always within the caller's organisation.
+   */
+  async getSingleRow(orgUID: number, dbName: unknown, table: unknown, rawWhere: unknown, rawSelect: unknown) {
+    const name = `${String(dbName ?? "").trim()}.${String(table ?? "").trim()}`;
+    const allowed = SINGLE_ROW_TABLES[name];
+    if (!allowed) throw new CiValidationError(`Table ${name} is not available.`);
+
+    const selectText = String(rawSelect ?? "").trim();
+    const columns = selectText === "" || selectText === "*" ? allowed : selectText.split(",").map((col) => col.trim()).filter(Boolean);
+    const badColumn = columns.find((col) => !allowed.includes(col));
+    if (badColumn) throw new CiValidationError(`Column ${badColumn} is not available on ${name}.`);
+
+    let where: unknown = rawWhere ?? {};
+    if (typeof where === "string") {
+      try {
+        where = where.trim() === "" ? {} : JSON.parse(where);
+      } catch {
+        throw new CiValidationError("where must be a JSON object, e.g. {\"ConfigType\":\"barcode\",\"IsDeleted\":0}.");
+      }
+    }
+    if (!where || typeof where !== "object" || Array.isArray(where)) throw new CiValidationError("where must be a JSON object.");
+
+    const filters: Record<string, unknown> = {};
+    for (const [column, value] of Object.entries(where as Record<string, unknown>)) {
+      if (!allowed.includes(column)) throw new CiValidationError(`Column ${column} is not available on ${name}.`);
+      if (value !== null && !["string", "number", "boolean"].includes(typeof value)) throw new CiValidationError(`The value for ${column} must be a single value.`);
+      filters[column] = value;
+    }
+    if (filters.OrgUID !== undefined && Number(filters.OrgUID) !== orgUID) throw new CiValidationError("OrgUID must be your own organisation.");
+    filters.OrgUID = orgUID;
+
+    try {
+      return { Data: await this.repo.singleRow(name, columns, filters) };
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_NO_SUCH_TABLE") throw new CiValidationError(`Table ${name} does not exist in the database yet.`);
+      throw err;
+    }
   }
 
   // getTaxDetailsInfo

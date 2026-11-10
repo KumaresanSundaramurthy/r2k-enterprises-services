@@ -223,6 +223,15 @@ export class AttendanceRepository extends BaseRepository {
     return new Map(rows.map((r: Row) => [Number(r.UserUID), Number(r.TotalPending)]));
   }
 
+  // Payroll_model::getUnsettledAdvances for the CI3 app — read only (no lock); approved advances only
+  openAdvances(orgUID: number, userUID: number): Promise<Row[]> {
+    return this.read("Transaction.SalaryAdvanceTbl")
+      .select("AdvanceUID", "BalancePending")
+      .where({ UserUID: userUID, OrgUID: orgUID, IsDeleted: 0, IsSettled: 0, AdvanceStatus: "Approved" })
+      .where("BalancePending", ">", 0)
+      .orderBy("AdvanceUID", "asc");
+  }
+
   // getUnsettledAdvances — oldest first, for recovery
   unsettledAdvances(trx: Knex.Transaction, orgUID: number, userUID: number): Promise<Row[]> {
     return trx("Transaction.SalaryAdvanceTbl")

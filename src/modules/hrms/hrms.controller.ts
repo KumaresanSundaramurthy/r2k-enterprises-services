@@ -19,13 +19,16 @@ import {
   DepartmentIdDto,
   DesignationFormDto,
   DesignationIdDto,
+  EmployeeAdvancesQueryDto,
   HolidayFormDto,
   HolidayIdDto,
   MonthQueryDto,
   PayrollEmployeesDto,
+  PayrollExistsQueryDto,
   PayrollIdDto,
   PayrollSaveDto,
   PayrollStatusDto,
+  PayrollUIDQueryDto,
 } from "./hrms.dto";
 import { HrmsMastersService } from "./hrms-masters.service";
 import { PayrollService } from "./payroll.service";
@@ -328,6 +331,26 @@ export class PayrollController {
   @ApiOperation({ summary: "A run and its lines (Payroll, PayrollLines)" })
   async viewPayroll(@Param("payrollUID", ParseIntPipe) payrollUID: number, @Query() dto: OrgContextDto) {
     return ciSuccess(await this.payroll.payrollDetail(dto.orgId, payrollUID));
+  }
+
+  // ── Payroll_model functions called by the CI3 app ─────────────────────────────
+
+  @Get("getPayrollByUID")
+  @ApiOperation({ summary: "Payroll_model::getPayrollByUID — the run (every column), not deleted: {Data: row or null}" })
+  async getPayrollByUID(@Query() dto: PayrollUIDQueryDto) {
+    return ciSuccess(await this.payroll.getPayrollByUID(dto.orgId, Number(dto.PayrollUID) || 0));
+  }
+
+  @Get("getPayrollExists")
+  @ApiOperation({ summary: "Payroll_model::getPayrollExists — the branch's live run for the month: {Data: {PayrollUID, PayrollStatus} or null}" })
+  async getPayrollExists(@Query() dto: PayrollExistsQueryDto) {
+    return ciSuccess(await this.payroll.getPayrollExists(dto.orgId, Number(dto.branchId) || 0, Number(dto.Month) || 0, Number(dto.Year) || 0));
+  }
+
+  @Get("getUnsettledAdvances")
+  @ApiOperation({ summary: "Payroll_model::getUnsettledAdvances — the employee's approved advances with a balance, oldest first: {Data: [{AdvanceUID, BalancePending}]}" })
+  async getUnsettledAdvances(@Query() dto: EmployeeAdvancesQueryDto) {
+    return ciSuccess(await this.payroll.getUnsettledAdvances(dto.orgId, Number(dto.EmployeeUID) || 0));
   }
 }
 

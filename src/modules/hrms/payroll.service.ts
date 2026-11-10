@@ -71,6 +71,26 @@ export class PayrollService {
     return { EmployeeCount: employees.length, CurrentMonth: Number(today.slice(5, 7)), CurrentYear: Number(today.slice(0, 4)) };
   }
 
+  // ── Payroll_model lookups for the CI3 app ─────────────────────────────────────
+
+  // getPayrollByUID — the live run, or null
+  async getPayrollByUID(orgUID: number, payrollUID: number) {
+    if (payrollUID <= 0) throw new CiValidationError("PayrollUID is required.");
+    return { Data: await this.repo.payrollRecord(orgUID, payrollUID) };
+  }
+
+  // getPayrollExists — the live run of the branch's month ({PayrollUID, PayrollStatus}), or null
+  async getPayrollExists(orgUID: number, branchUID: number, month: number, year: number) {
+    if (!(month >= 1 && month <= 12) || year < 2000) throw new CiValidationError("Valid Month and Year are required.");
+    return { Data: await this.repo.livePayrollOfMonth(orgUID, branchUID, month, year) };
+  }
+
+  // getUnsettledAdvances — the employee's approved advances with a balance left, oldest first
+  async getUnsettledAdvances(orgUID: number, employeeUID: number) {
+    if (employeeUID <= 0) throw new CiValidationError("EmployeeUID is required.");
+    return { Data: await this.attendance.openAdvances(orgUID, employeeUID) };
+  }
+
   // viewPayroll — the run and its lines
   async payrollDetail(orgUID: number, payrollUID: number) {
     const payroll = await this.repo.payroll(orgUID, payrollUID);

@@ -4,6 +4,22 @@ import { DatabaseService } from "../../core/database/database.service";
 
 type Row = Record<string, unknown>;
 
+/**
+ * Tables Global_model::getSingleRow may read through the API, with their readable columns. Every read is limited to
+ * the caller's organisation, so each table here must have OrgUID. Add a table only with the columns a caller needs —
+ * never a table holding passwords, tokens or other organisations' data.
+ */
+export const SINGLE_ROW_TABLES: Record<string, readonly string[]> = {
+  "Products.BarcodeConfigTbl": [
+    "ConfigUID", "OrgUID", "ConfigType", "Format", "BarWidth", "Height", "ShowValue", "FontSize", "LineColor",
+    "Size", "ErrorLevel", "DarkColor", "LightColor", "IsEnabled", "IsActive", "IsDeleted", "CreatedBy", "UpdatedBy", "CreatedOn", "UpdatedOn",
+  ],
+  "Products.BarcodeLabelLayoutTbl": [
+    "LayoutUID", "OrgUID", "LabelType", "LabelSizeKey", "LabelWidthPx", "LabelHeightPx", "FieldsLayout", "BarcodeConfig",
+    "IsActive", "IsDeleted", "CreatedBy", "UpdatedBy", "CreatedOn", "UpdatedOn",
+  ],
+};
+
 // Payments counted as received on a document: live, not cancelled, and not an expense / income record's own payment
 const PAID_ON = (alias: string) =>
   `COALESCE((SELECT SUM(P.Amount) FROM Transaction.PaymentsTbl P WHERE P.TransUID = ${alias}.TransUID AND P.OrgUID = ${alias}.OrgUID
@@ -15,6 +31,12 @@ const PAID_ON = (alias: string) =>
 export class GloballyRepository extends BaseRepository {
   constructor(db: DatabaseService) {
     super(db);
+  }
+
+  // Global_model::getSingleRow — first matching row of an allowed table (table, columns and filters checked by the service)
+  async singleRow(table: string, columns: readonly string[], where: Row): Promise<Row | null> {
+    const row = await this.read(table).select(columns).where(where).limit(1).first();
+    return (row as Row | undefined) ?? null;
   }
 
   // Global_model::getTaxDetailsInfo — active GST rates in display order

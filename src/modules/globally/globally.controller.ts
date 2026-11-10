@@ -25,6 +25,13 @@ export class IfscQueryDto {
   @ApiProperty({ example: "SBIN0000001" }) @Allow() ifsc?: string;
 }
 
+export class SingleRowQueryDto extends OrgContextDto {
+  @ApiProperty({ example: "Products" }) @Allow() dbName?: string;
+  @ApiProperty({ example: "BarcodeConfigTbl" }) @Allow() table?: string;
+  @ApiPropertyOptional({ example: '{"ConfigType":"barcode","IsDeleted":0}', description: "JSON object of column = value (OrgUID is always the caller's)" }) @Allow() where?: string;
+  @ApiPropertyOptional({ example: "ConfigUID", default: "*", description: "Comma-separated columns, or * for all readable columns" }) @Allow() select?: string;
+}
+
 export class CommTemplateQueryDto extends OrgContextDto {
   @ApiProperty({ type: Number, description: "103 Invoice, 110 Payment (others: template text without record tokens)" }) @Allow() ModuleUID?: string | number;
   @ApiPropertyOptional({ type: Number, description: "The invoice / payment whose details fill the tokens" }) @Allow() RecordUID?: string | number;
@@ -74,6 +81,15 @@ export class GloballyController {
   @ApiOperation({ summary: "Every city of a country (Data: id, name, state_code)" })
   async getCityofCountry(@Query() dto: CountryCodeQueryDto) {
     return ciSuccess(await this.globally.getCityofCountry(String(dto.CountryCode ?? "")));
+  }
+
+  @Get("getSingleRow")
+  @ApiOperation({
+    summary: "Global_model::getSingleRow — first row matching `where` ({Data: row or null})",
+    description: "Only allowed tables (Products.BarcodeConfigTbl, Products.BarcodeLabelLayoutTbl) and their columns; always limited to orgId.",
+  })
+  async getSingleRow(@Query() dto: SingleRowQueryDto) {
+    return ciSuccess(await this.globally.getSingleRow(dto.orgId, dto.dbName, dto.table, dto.where, dto.select));
   }
 
   @Get("getTaxDetailsInfo")

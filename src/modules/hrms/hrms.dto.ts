@@ -113,6 +113,21 @@ export class PayrollStatusDto extends HrmsWriteDto {
   @ApiPropertyOptional({ enum: ["Draft", "Processed", "Paid", "Cancelled"] }) @Allow() Status?: string;
 }
 
+// Payroll_model lookups called by the CI3 app
+export class PayrollUIDQueryDto extends OrgContextDto {
+  @ApiPropertyOptional({ type: Number, description: "Required" }) @Allow() PayrollUID?: string | number;
+}
+
+export class PayrollExistsQueryDto extends OrgContextDto {
+  @ApiPropertyOptional({ type: Number, example: 1, description: "BranchUID of the run (required)" }) @Allow() branchId?: string | number;
+  @ApiPropertyOptional({ type: Number, description: "Required, 1-12" }) @Allow() Month?: string | number;
+  @ApiPropertyOptional({ type: Number, description: "Required" }) @Allow() Year?: string | number;
+}
+
+export class EmployeeAdvancesQueryDto extends OrgContextDto {
+  @ApiPropertyOptional({ type: Number, description: "The employee's UserUID (required)" }) @Allow() EmployeeUID?: string | number;
+}
+
 export class PayrollIdDto extends HrmsWriteDto {
   @ApiPropertyOptional({ type: Number }) @Allow() PayrollUID?: string | number;
 }
