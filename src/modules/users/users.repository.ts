@@ -133,6 +133,15 @@ export class UsersRepository extends BaseRepository {
       .orderBy("FirstName", "asc");
   }
 
+  // User_model::getCurrentSessionToken — the token of the user's latest login (single-session check)
+  async currentSessionToken(userUID: number): Promise<string | null> {
+    const row = await this.read(USERS)
+      .select("CurrentSessionToken")
+      .where({ UserUID: userUID, IsActive: 1, IsDeleted: 0 })
+      .first();
+    return row?.CurrentSessionToken ?? null;
+  }
+
   // getUserBranchAccess
   async branchAccess(orgUID: number, userUID: number): Promise<Row[]> {
     return this.read("Users.UserBranchAccessTbl")

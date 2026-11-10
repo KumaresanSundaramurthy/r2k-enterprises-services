@@ -238,6 +238,11 @@ export class UsersService {
     return { Users: users };
   }
 
+  // getCurrentSessionToken — null when the user is missing, inactive or deleted
+  async getCurrentSessionToken(userUID: number) {
+    return { CurrentSessionToken: await this.repo.currentSessionToken(userUID) };
+  }
+
   // _appendListResponse — the first page for the posted Filter / RowLimit, as after a change
   private async listResponse(ctx: WriteContext, form: Form) {
     const filter = UsersService.jsonObject(form.Filter) as UserListFilter;

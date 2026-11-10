@@ -44,6 +44,14 @@ export class UserQueryDto extends OrgUserContextDto {
   @ApiProperty({ type: Number, description: "The staff member" }) @Allow() UserUID?: string | number;
 }
 
+export class SessionTokenQueryDto {
+  @ApiProperty({ type: Number, example: 1, description: "UserUID of the logged-in user" })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  userId!: number;
+}
+
 // Changes that answer with the refreshed first page take the list's Filter / RowLimit
 class ListEchoDto extends OrgUserContextDto {
   @ApiPropertyOptional({ description: "JSON filter of the list (as getPageDetails)" }) @Allow() Filter?: string;
@@ -196,5 +204,15 @@ export class UsersController {
   })
   async getOrgUsers(@Query() dto: OrgContextDto) {
     return ciSuccess(await this.users.getLoginUsers(dto.orgId));
+  }
+
+  // User_model::getCurrentSessionToken — called by the CI3 Middleware hook when UserActiveSession_{uid} is missing in Redis
+  @Get("getCurrentSessionToken")
+  @ApiOperation({
+    summary: "The user's current session token ({CurrentSessionToken}, null for a missing, inactive or deleted user)",
+    description: "Single-session check: a newer login replaces CurrentSessionToken, so an older session's token no longer matches.",
+  })
+  async getCurrentSessionToken(@Query() dto: SessionTokenQueryDto) {
+    return ciSuccess(await this.users.getCurrentSessionToken(dto.userId));
   }
 }
