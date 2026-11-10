@@ -44,6 +44,8 @@ import { ExportsModule } from "./modules/exports/exports.module";
 import { GloballyModule } from "./modules/globally/globally.module";
 import { HrmsModule } from "./modules/hrms/hrms.module";
 import { RentalModule } from "./modules/rental/rental.module";
+import { UserPreferencesModule } from "./modules/user-preferences/user-preferences.module";
+import { AssistantModule } from "./modules/assistant/assistant.module";
 
 @Module({
   imports: [
@@ -85,6 +87,8 @@ import { RentalModule } from "./modules/rental/rental.module";
     GloballyModule,
     HrmsModule,
     RentalModule,
+    UserPreferencesModule,
+    AssistantModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

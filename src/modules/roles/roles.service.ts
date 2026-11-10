@@ -34,6 +34,11 @@ export class RolesService {
     return { Data: await this.repo.list(orgUID) };
   }
 
+  // getFirstRoleUID — used by the subscription pages for the admin role
+  async getFirstRoleUID(orgUID: number) {
+    return { RoleUID: await this.repo.firstRoleUID(orgUID) };
+  }
+
   // getRolePermissions — of a role this organisation can see
   async getPermissions(orgUID: number, roleUID: number) {
     if (!roleUID) throw new CiValidationError("RoleUID is required.");

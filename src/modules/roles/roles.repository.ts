@@ -41,6 +41,12 @@ export class RolesRepository extends BaseRepository {
       ]);
   }
 
+  // Roles_model::getFirstRoleUID — the organisation's oldest role (its admin role); 0 when it has none
+  async firstRoleUID(orgUID: number): Promise<number> {
+    const row = await this.read(ROLES).select("RoleUID").where({ OrgUID: orgUID, IsDeleted: 0 }).orderBy("RoleUID", "asc").first();
+    return row ? Number(row.RoleUID) : 0;
+  }
+
   // A role the organisation can see (its own or a global one)
   async find(orgUID: number, roleUID: number): Promise<Row | null> {
     const row = await this.read(ROLES)

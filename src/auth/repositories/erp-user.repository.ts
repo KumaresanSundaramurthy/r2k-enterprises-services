@@ -67,6 +67,44 @@ export class ErpUserRepository {
     return row ?? null;
   }
 
+  // User_model::getUserByUserInfo — active, not deleted (login access not required); CI3's own column list, no branch join
+  async findUserInfoByUID(userUID: number): Promise<Record<string, string | null>[]> {
+    return erpKnexRead("Users.UserTbl as User")
+      .select(
+        "User.UserUID as UserUID",
+        "User.FirstName as UserFirstName",
+        "User.LastName as UserLastName",
+        "User.UserName as UserName",
+        "User.EmailAddress as UserEmailAddress",
+        "User.Password as UserPassword",
+        "User.IsLocked as IsLocked",
+        "Roles.RoleUID as UserRoleUID",
+        "Roles.Name as UserRoleName",
+        "Org.OrgUID as UserOrgUID",
+        "User.BranchUID as BranchUID",
+        "Org.Logo as UserOrgLogo",
+        "Org.CountryCode as UserOrgCCode",
+        "Org.CountryISO2 as UserOrgCISO2",
+        "Org.Name as UserOrgName",
+        "Org.BrandName as UserOrgBrandName",
+        "Org.MobileNumber as UserOrgMobile",
+        "Timezone.Timezone",
+        "User.CountryCode as UserCountryCode",
+        "User.CountryISO2 as UserCountryISO2",
+        "User.MobileNumber as UserMobileNumber",
+        "User.Image as UserImage",
+        "Org.ShortCode as OrgShortCode",
+        "Org.OrgToken as OrgToken",
+        "Org.StateCode as OrgStateCode",
+        "Org.StateName as OrgStateName",
+        "Org.SectorUID as SectorUID"
+      )
+      .leftJoin("UserRole.RolesTbl as Roles", "Roles.RoleUID", "User.RoleUID")
+      .leftJoin("Organisation.OrganisationTbl as Org", "Org.OrgUID", "User.OrgUID")
+      .leftJoin("Global.TimezoneTbl as Timezone", "Timezone.TimezoneUID", "Org.TimezoneUID")
+      .where({ "User.UserUID": userUID, "User.IsActive": 1, "User.IsDeleted": 0 });
+  }
+
   async findStepOneUser(identifier: string): Promise<StepOneUserRow | null> {
     const row = await erpKnexRead("Users.UserTbl as U")
       .select(

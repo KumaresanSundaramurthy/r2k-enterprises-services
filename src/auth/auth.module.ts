@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { AuthController } from "./controllers/auth.controller";
+import { CiUserLookupController } from "./controllers/ci-user-lookup.controller";
 import { EmailVerificationController } from "./controllers/email-verification.controller";
 import { OAuthController } from "./controllers/oauth.controller";
 import { OnboardingController } from "./controllers/onboarding.controller";
@@ -23,7 +24,7 @@ import { SubscriptionCheckService } from "./services/subscription-check.service"
 // ERP (CI3) user authentication. Sessions are shared with the CI3 app through Redis and the JWT_KEY-signed cookie.
 @Module({
   imports: [JwtModule.register({ secret: process.env.JWT_KEY, signOptions: { algorithm: "HS256" } })],
-  controllers: [AuthController, PasswordController, EmailVerificationController, OAuthController, OnboardingController],
+  controllers: [AuthController, PasswordController, EmailVerificationController, OAuthController, OnboardingController, CiUserLookupController],
   providers: [
     AuthTokenService,
     SessionService,

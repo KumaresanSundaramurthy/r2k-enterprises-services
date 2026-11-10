@@ -88,4 +88,11 @@ export class RolesController {
   async getRolesList(@Query() dto: OrgContextDto) {
     return ciSuccess(await this.roles.getList(dto.orgId));
   }
+
+  // Roles_model::getFirstRoleUID — called by CI3's Subscription / Subscriptionrenew (no user logged in: send the ci-server token)
+  @Get("getFirstRoleUID")
+  @ApiOperation({ summary: "The organisation's first (admin) role: {RoleUID} — lowest RoleUID of its own, not deleted; 0 when none" })
+  async getFirstRoleUID(@Query() dto: OrgContextDto) {
+    return ciSuccess(await this.roles.getFirstRoleUID(dto.orgId));
+  }
 }
