@@ -82,6 +82,23 @@ export class GloballyService {
     return { Data: await this.repo.timezones() };
   }
 
+  // getCityofCountry — every city of the country (Data: id, name, state_code)
+  async getCityofCountry(countryCode: string) {
+    const code = countryCode.trim().toUpperCase();
+    if (!code) throw new CiValidationError("Country Code information is missing.");
+    return { Message: "Data Retrieved Successfully", Data: await this.location.cities(code) };
+  }
+
+  // getTaxDetailsInfo
+  async getTaxDetailsInfo() {
+    return { Message: "Data Retrieved Successfully", Data: await this.repo.taxDetails() };
+  }
+
+  // getStorageTypeData
+  async getStorageTypeData() {
+    return { Message: "Data Retrieved Successfully", Data: await this.repo.storageTypes() };
+  }
+
   /**
    * fetchGstinDetails — refused when the org has no GSTIN credit points; a successful lookup uses one point and
    * refreshes the {org}-credit-settings cache (GstinPoints is returned).

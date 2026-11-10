@@ -17,6 +17,22 @@ export class GloballyRepository extends BaseRepository {
     super(db);
   }
 
+  // Global_model::getTaxDetailsInfo — active GST rates in display order
+  taxDetails(): Promise<Row[]> {
+    return this.read("Global.TaxDetailsTbl as TaxDetail")
+      .select("TaxDetail.TaxDetailsUID", "TaxDetail.TaxName", "TaxDetail.Percentage", "TaxDetail.CGST", "TaxDetail.SGST", "TaxDetail.IGST", "TaxDetail.UpdatedOn")
+      .where({ "TaxDetail.IsDeleted": 0, "TaxDetail.IsActive": 1 })
+      .orderBy("TaxDetail.Sorting", "asc");
+  }
+
+  // Global_model::getStorageTypeData — active storage types in display order
+  storageTypes(): Promise<Row[]> {
+    return this.read("Global.StorageTypeTbl as StorageType")
+      .select("StorageType.StorageTypeUID", "StorageType.Name", "StorageType.UpdatedOn")
+      .where({ "StorageType.IsDeleted": 0, "StorageType.IsActive": 1 })
+      .orderBy("StorageType.Sorting", "asc");
+  }
+
   // Global_model::getTimezoneDetails
   timezones(): Promise<Row[]> {
     return this.read("Global.TimezoneTbl as Tzone").select(

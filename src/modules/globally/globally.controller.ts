@@ -70,6 +70,24 @@ export class GloballyController {
     return ciSuccess(await this.globally.getTimezones());
   }
 
+  @Get("getCityofCountry")
+  @ApiOperation({ summary: "Every city of a country (Data: id, name, state_code)" })
+  async getCityofCountry(@Query() dto: CountryCodeQueryDto) {
+    return ciSuccess(await this.globally.getCityofCountry(String(dto.CountryCode ?? "")));
+  }
+
+  @Get("getTaxDetailsInfo")
+  @ApiOperation({ summary: "GST rates (Data: TaxDetailsUID, TaxName, Percentage, CGST, SGST, IGST, UpdatedOn)" })
+  async getTaxDetailsInfo() {
+    return ciSuccess(await this.globally.getTaxDetailsInfo());
+  }
+
+  @Get("getStorageTypeData")
+  @ApiOperation({ summary: "Storage types (Data: StorageTypeUID, Name, UpdatedOn)" })
+  async getStorageTypeData() {
+    return ciSuccess(await this.globally.getStorageTypeData());
+  }
+
   @Get("fetchGstinDetails")
   @ApiOperation({
     summary: "GSTIN lookup: legal / trade name, PAN, state, address; uses one GSTIN credit point (GstinPoints). NoCreditPoints: true when none are left",

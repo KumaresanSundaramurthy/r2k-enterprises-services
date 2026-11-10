@@ -46,6 +46,7 @@ import { HrmsModule } from "./modules/hrms/hrms.module";
 import { RentalModule } from "./modules/rental/rental.module";
 import { UserPreferencesModule } from "./modules/user-preferences/user-preferences.module";
 import { AssistantModule } from "./modules/assistant/assistant.module";
+import { BarcodeConfigModule } from "./modules/barcode-config/barcode-config.module";
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { AssistantModule } from "./modules/assistant/assistant.module";
     RentalModule,
     UserPreferencesModule,
     AssistantModule,
+    BarcodeConfigModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,
