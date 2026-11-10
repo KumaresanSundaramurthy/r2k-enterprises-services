@@ -7,11 +7,27 @@ import { OrgContextDto } from "../../core/dto/org-context.dto";
 import { writeContext } from "../../core/request/write-context";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
+import { OrgInfoCacheService } from "../../libraries/org-info-cache/org-info-cache.service";
 import { AcceptForm, FileFields } from "../products/product-files";
 import { OrganisationFormDto, ShipAddressDto, ShipAddressUpdateDto } from "./dto/organisation.dto";
-import { OrgInfoCacheService } from "../../libraries/org-info-cache/org-info-cache.service";
 import { OrganisationWriteService } from "./organisation-write.service";
 import { OrganisationService } from "./organisation.service";
+
+/* Public (no JWT guard) — CI3 calls this server-to-server from both authenticated pages
+   and public pages (Doc, Pay, Receipt, Razorpay, Oauth) that have no user JWT cookie.
+   Returns org receipt header; DevPassword is excluded by OrgInfoCacheService. */
+@ApiTags("Organisation")
+@UseFilters(CiExceptionFilter)
+@Controller("api/organisation")
+export class OrganisationPublicController {
+  constructor(private readonly orgInfoCache: OrgInfoCacheService) {}
+
+  @Get("getOrgInfo")
+  @ApiOperation({ summary: "Org receipt header from cache: Name, BrandName, Logo, GSTIN, Mobile, Email, billing address (no DevPassword)" })
+  async getOrgInfo(@Query() dto: OrgContextDto) {
+    return ciSuccess((await this.orgInfoCache.get(dto.orgId)) ?? {});
+  }
+}
 
 // Settings → Organisation page of CI3 (Organisation controller), same method names as its JS calls.
 @ApiTags("Organisation")
@@ -22,15 +38,8 @@ import { OrganisationService } from "./organisation.service";
 export class OrganisationController {
   constructor(
     private readonly organisation: OrganisationService,
-    private readonly writes: OrganisationWriteService,
-    private readonly orgInfoCache: OrgInfoCacheService
+    private readonly writes: OrganisationWriteService
   ) {}
-
-  @Get("getOrgInfo")
-  @ApiOperation({ summary: "Org receipt header from cache: Name, BrandName, Logo, GSTIN, Mobile, Email, billing address (no DevPassword)" })
-  async getOrgInfo(@Query() dto: OrgContextDto) {
-    return ciSuccess((await this.orgInfoCache.get(dto.orgId)) ?? {});
-  }
 
   @Get("getOrganisationDetails")
   @ApiOperation({ summary: "Page data: EditOrgData (Logo as CDN URL), BillOrgAddrData, ShipOrgAddrList, MaxShippingAddr" })
