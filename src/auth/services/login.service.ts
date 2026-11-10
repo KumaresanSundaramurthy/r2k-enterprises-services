@@ -20,6 +20,7 @@ import {
 } from "../../common/utils/php-compat";
 import { ErpUserRow } from "../interfaces/erp-user.interface";
 import { ErpUserRepository } from "../repositories/erp-user.repository";
+import { OrganisationRepository } from "../repositories/organisation.repository";
 import { SecurityRepository } from "../repositories/security.repository";
 import { RequestMeta } from "../utils/device-info";
 import { AuthTokenService } from "./auth-token.service";
@@ -62,8 +63,15 @@ export class LoginService {
     private readonly redis: RedisService,
     private readonly tokens: AuthTokenService,
     private readonly sessions: SessionService,
-    private readonly subscriptions: SubscriptionCheckService
+    private readonly subscriptions: SubscriptionCheckService,
+    private readonly organisations: OrganisationRepository
   ) {}
+
+  // Login / forgot-password page settings (CI3 Login::_getDefaultOrgLogo + getDefaultOrgSettings)
+  async loginConfig() {
+    const row = await this.organisations.findDefaultLoginSettings();
+    return { orgLogo: row?.Logo ? resolveCdnUrl(row.Logo) : "", twoStepLogin: toInt(row?.TwoStepLogin) === 1 };
+  }
 
   // Step 1: confirm the account can sign in with a password before the password screen is shown.
   async identify(identifier: string) {

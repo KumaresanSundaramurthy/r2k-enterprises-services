@@ -3,6 +3,20 @@ import { erpKnexRead, erpKnexWrite } from "../../config/erp-knex";
 
 @Injectable()
 export class OrganisationRepository {
+  /**
+   * getDefaultOrgLogo + getDefaultOrgSettings — the logo and TwoStepLogin flag the login pages show before anyone
+   * signs in. Like CI3 they come from the first active organisation (lowest OrgUID; CI3 had no ORDER BY).
+   */
+  async findDefaultLoginSettings(): Promise<{ Logo: string | null; TwoStepLogin: string | null } | null> {
+    const row = await erpKnexRead("Organisation.OrganisationTbl as O")
+      .select("O.Logo", "S.TwoStepLogin")
+      .leftJoin("Settings.OrgSettingsTbl as S", "S.OrgUID", "O.OrgUID")
+      .where({ "O.IsDeleted": 0, "O.IsActive": 1 })
+      .orderBy("O.OrgUID", "asc")
+      .first();
+    return row ?? null;
+  }
+
   async findByVerifyToken(
     token: string
   ): Promise<{ OrgUID: string; IsEmailVerified: string | null; EmailVerifyExpiry: string | null } | null> {

@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { ErpSession } from "../decorators/erp-session.decorator";
@@ -19,6 +19,15 @@ export class AuthController {
     private readonly sessionService: SessionService,
     private readonly tokens: AuthTokenService
   ) {}
+
+  @Get("login/config")
+  @ApiOperation({
+    summary: "Login page settings (no sign-in needed)",
+    description: "orgLogo (CDN URL, empty when none) and twoStepLogin, from the first active organisation — as CI3's login page reads them.",
+  })
+  loginConfig() {
+    return this.loginService.loginConfig();
+  }
 
   @Post("login/identify")
   @HttpCode(HttpStatus.OK)
