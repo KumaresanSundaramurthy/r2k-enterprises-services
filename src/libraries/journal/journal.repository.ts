@@ -88,6 +88,21 @@ export class JournalRepository extends BaseRepository {
       .where({ JournalUID: journalUID, OrgUID: orgUID, IsDeleted: 0 });
   }
 
+  // A manual journal's own reference: ReferenceID = its JournalUID, ReferenceNo = its JournalNo
+  async setReference(trx: Knex.Transaction, orgUID: number, journalUID: number, referenceID: number, referenceNo: string): Promise<void> {
+    await trx("Accounting.GeneralJournal").where({ JournalUID: journalUID, OrgUID: orgUID }).update({ ReferenceID: referenceID, ReferenceNo: referenceNo });
+  }
+
+  // A live journal header, locked for a reversal
+  async liveJournal(trx: Knex.Transaction, orgUID: number, journalUID: number): Promise<Row | null> {
+    const row = await trx("Accounting.GeneralJournal")
+      .select("JournalUID", "JournalNo", "FinancialYear", "ReferenceType", "Narration")
+      .where({ JournalUID: journalUID, OrgUID: orgUID, IsDeleted: 0 })
+      .forUpdate()
+      .first();
+    return row ?? null;
+  }
+
   // The journal header and its lines are soft-deleted (reverseJournal)
   async softDeleteJournal(trx: Knex.Transaction, orgUID: number, journalUID: number): Promise<void> {
     await trx("Accounting.GeneralJournal").where({ OrgUID: orgUID, JournalUID: journalUID }).update({ IsDeleted: 1 });

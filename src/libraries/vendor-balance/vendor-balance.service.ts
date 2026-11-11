@@ -79,6 +79,43 @@ export class VendorBalanceService {
     return this.balances.totalPaid(orgUID, vendorUID);
   }
 
+  // ── Vendors_model functions called one by one by the CI3 app ───────────────────
+
+  // getVendorsWithLedgerForBalance — one active vendor, or all when vendorUID is 0
+  balanceBase(orgUID: number, vendorUID: number): Promise<VendorBalanceBase[]> {
+    return this.balances.findBalanceBase(orgUID, vendorUID);
+  }
+
+  totalPurchased(orgUID: number, vendorUID: number): Promise<number> {
+    return this.balances.totalPurchased(orgUID, vendorUID);
+  }
+
+  totalReturned(orgUID: number, vendorUID: number): Promise<number> {
+    return this.balances.totalReturned(orgUID, vendorUID);
+  }
+
+  purchaseReturnsCoveredByDebitNote(orgUID: number, vendorUID: number): Promise<number> {
+    return this.balances.purchaseReturnsCoveredByDebitNote(orgUID, vendorUID);
+  }
+
+  pendingNoteTotals(orgUID: number, vendorUID: number): Promise<{ debit: number; credit: number }> {
+    return this.balances.pendingNoteTotals(orgUID, vendorUID);
+  }
+
+  // updateVendorPendingBalance — only for a vendor of the organisation
+  async setPendingBalance(orgUID: number, vendorUID: number, balance: number, balanceType: VendorBalanceType, userUID: number): Promise<boolean> {
+    if (!(await this.balances.isOrgVendor(orgUID, vendorUID))) return false;
+    await this.balances.savePendingBalance(orgUID, vendorUID, balance, balanceType, userUID);
+    return true;
+  }
+
+  // updateVendorBalanceInLedger — only for a ledger mapped to one of the organisation's vendors
+  async setLedgerBalance(orgUID: number, ledgerUID: number, balance: number, balanceType: VendorBalanceType, userUID: number): Promise<boolean> {
+    if (!(await this.balances.isOrgVendorLedger(orgUID, ledgerUID))) return false;
+    await this.balances.saveLedgerBalance(ledgerUID, balance, balanceType, userUID);
+    return true;
+  }
+
   // Closing balance → VendOpeningBalanceTbl.PendingBalance and the ledger's CurrentBalance
   private async store(orgUID: number, vendor: VendorBalanceBase, result: SignedBalance, userUID: number) {
     if (vendor.LedgerUID) {

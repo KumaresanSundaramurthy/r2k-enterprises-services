@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { VendorAccountService } from "./vendor-account.service";
 import { VendorAttachmentService } from "./vendor-attachment.service";
+import { VendorBalanceController } from "./vendor-balance.controller";
 import { VendorCacheService } from "./vendor-cache.service";
 import { VendorExportService } from "./vendor-export.service";
 import { VendorGroupWriteService } from "./vendor-group-write.service";
@@ -16,7 +17,7 @@ import { VendorsRepository } from "./vendors.repository";
 import { VendorsService } from "./vendors.service";
 
 @Module({
-  controllers: [VendorsController, VendorGroupsController],
+  controllers: [VendorsController, VendorGroupsController, VendorBalanceController],
   providers: [
     VendorsService,
     VendorWriteService,

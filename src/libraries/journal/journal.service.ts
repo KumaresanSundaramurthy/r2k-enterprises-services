@@ -530,6 +530,55 @@ export class JournalService {
     }
   }
 
+  /**
+   * postManualJournal — a user-entered journal ('Manual', or 'Recurring' when posted from a recurring journal).
+   * Its ReferenceID / ReferenceNo point at itself. Lines must already be checked (the organisation's ledgers, balanced).
+   */
+  async postManual(
+    trx: Knex.Transaction,
+    orgUID: number,
+    date: string,
+    narration: string,
+    lines: { LedgerUID: number; Type: JournalSide; Amount: number; Particulars: string }[],
+    userUID: number,
+    referenceType: "Manual" | "Recurring" = "Manual"
+  ): Promise<{ journalUID: number; journalNo: string }> {
+    const header: JournalHeader = { orgUID, date, financialYear: Number(date.slice(0, 4)), referenceType, referenceID: 0, referenceNo: null, narration, userUID };
+    const journalUID = await this.createHeader(trx, header);
+    const journalNo = `JRN-${header.financialYear}-${String(journalUID).padStart(7, "0")}`;
+    await this.repo.setReference(trx, orgUID, journalUID, journalUID, journalNo);
+    for (const line of lines) {
+      await this.addLine(trx, header, journalUID, line.LedgerUID, line.Type, line.Amount, line.Particulars || narration);
+    }
+    return { journalUID, journalNo };
+  }
+
+  // reverseManualJournal — a live Manual journal is soft-deleted and a dated-today 'Reversal-Manual' journal swaps its lines
+  async reverseManual(trx: Knex.Transaction, orgUID: number, journalUID: number, userUID: number, today: string = todayDate()): Promise<boolean> {
+    const journal = await this.repo.liveJournal(trx, orgUID, journalUID);
+    if (!journal || journal.ReferenceType !== "Manual") return false;
+    const entries = await this.repo.journalEntries(trx, orgUID, journalUID);
+    await this.repo.softDeleteJournal(trx, orgUID, journalUID);
+    if (entries.length === 0) return true;
+
+    const header: JournalHeader = {
+      orgUID,
+      date: today,
+      financialYear: Number(journal.FinancialYear),
+      referenceType: "Reversal-Manual",
+      referenceID: journalUID,
+      referenceNo: `REV-${journal.JournalNo}`,
+      narration: `Reversal of ${journal.JournalNo}: ${journal.Narration ?? ""}`,
+      userUID,
+    };
+    const reversalUID = await this.createHeader(trx, header);
+    for (const entry of entries) {
+      const side: JournalSide = entry.TransactionType === "Debit" ? "Credit" : "Debit";
+      await this.addLine(trx, header, reversalUID, Number(entry.LedgerUID), side, Number(entry.Amount), `Reversal: ${entry.Particulars ?? ""}`);
+    }
+    return true;
+  }
+
   // reverseJournal — each live journal of the record is soft-deleted and a dated-today journal with Dr/Cr swapped is posted
   async reverse(trx: Knex.Transaction, orgUID: number, referenceType: string, referenceID: number, userUID: number): Promise<void> {
     const today = todayDate();

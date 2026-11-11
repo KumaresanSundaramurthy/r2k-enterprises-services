@@ -123,6 +123,20 @@ export class VendorBalanceRepository extends BaseRepository {
       .merge({ PendingBalance: balance, PendingBalType: balanceType, UpdatedBy: userUID });
   }
 
+  // A vendor of the organisation (not deleted)
+  async isOrgVendor(orgUID: number, vendorUID: number): Promise<boolean> {
+    return !!(await this.read("Vendors.VendorTbl").select("VendorUID").where({ OrgUID: orgUID, VendorUID: vendorUID, IsDeleted: 0 }).first());
+  }
+
+  // A ledger mapped to one of the organisation's vendors
+  async isOrgVendorLedger(orgUID: number, ledgerUID: number): Promise<boolean> {
+    return !!(await this.read("Accounting.EntityLedgerMap as ELM")
+      .join("Vendors.VendorTbl as V", "V.VendorUID", "ELM.VendorUID")
+      .select("ELM.LedgerUID")
+      .where({ "ELM.LedgerUID": ledgerUID, "ELM.EntityType": "Vendor", "ELM.IsDeleted": 0, "V.OrgUID": orgUID })
+      .first());
+  }
+
   // updateVendorBalanceInLedger
   async saveLedgerBalance(ledgerUID: number, balance: number, balanceType: string, userUID: number): Promise<void> {
     await this.writer()("Accounting.ChartOfAccounts")
