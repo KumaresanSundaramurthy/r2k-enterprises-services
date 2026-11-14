@@ -246,20 +246,23 @@ export class TransactionEngineService {
       this.charges.list(orgUID),
       this.settingsLookups.taxDetails(),
     ]);
-    const nextNumbers: Record<number, number> = {};
-    for (const prefix of prefixes) nextNumbers[Number(prefix.PrefixUID)] = await this.reads.nextNumber(orgUID, kind.moduleUID, Number(prefix.PrefixUID));
-    let dispatch: Row = {};
-    if (dispatchData === "list") {
-      const addresses = await this.lookups.dispatchAddresses(orgUID);
-      dispatch = { DispatchAddresses: addresses, DispatchAddress: addresses[0] ?? null };
-    } else if (dispatchData === "single") {
-      dispatch = { DispatchAddress: await this.lookups.dispatchAddress(orgUID) };
-    }
+    const [nextNumberEntries, dispatch, storageData] = await Promise.all([
+      Promise.all(prefixes.map(async (prefix) => {
+        const uid = Number(prefix.PrefixUID);
+        return [uid, await this.reads.nextNumber(orgUID, kind.moduleUID, uid)] as const;
+      })),
+      dispatchData === "list"
+        ? this.lookups.dispatchAddresses(orgUID).then((addresses) => ({ DispatchAddresses: addresses, DispatchAddress: addresses[0] ?? null }))
+        : dispatchData === "single"
+        ? this.lookups.dispatchAddress(orgUID).then((address) => ({ DispatchAddress: address }))
+        : Promise.resolve({}),
+      settings.enableStorage ? this.lookups.storages(orgUID, langCode) : Promise.resolve([]),
+    ]);
     return {
       PrefixData: prefixes,
-      NextNumberMap: nextNumbers,
+      NextNumberMap: Object.fromEntries(nextNumberEntries),
       ...dispatch,
-      fltStorageData: settings.enableStorage ? await this.lookups.storages(orgUID, langCode) : [],
+      fltStorageData: storageData,
       AdditionalCharges: allCharges.filter((charge) => Number(charge.ShowByDefault) === 1),
       AcNextSortOrder: allCharges.reduce((max, charge) => Math.max(max, Number(charge.SortOrder) || 0), 0) + 1,
       TaxList: taxes,
