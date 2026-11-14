@@ -18,6 +18,7 @@ import { OrgInfoCacheService } from "./org-info-cache/org-info-cache.service";
 import { UserAccessService } from "./user-access/user-access.service";
 import { LocationService } from "./location/location.service";
 import { PartyDetailsService } from "./party-details/party-details.service";
+import { PdfRendererService } from "./pdf-renderer/pdf-renderer.service";
 import { StockLedgerService } from "./stock-ledger/stock-ledger.service";
 import { TransactionPaymentService } from "./transaction-payment/transaction-payment.service";
 import { TranslationService } from "./translation/translation.service";
@@ -44,6 +45,7 @@ const services = [
   OrgInfoCacheService,
   UserAccessService,
   StockLedgerService,
+  PdfRendererService,
 ];
 
 // Reusable services (CI3's application/libraries). Each one is injected wherever it is needed.

@@ -4,12 +4,13 @@ import { Request } from "express";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { writeContext } from "../../core/request/write-context";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
-import { ciSuccess } from "../../core/response/ci-response";
+import { CiValidationError, ciSuccess } from "../../core/response/ci-response";
 import { postInt } from "../../core/utils/form-values";
 import { recordFiles } from "../expense-income/entry-files";
 import { AcceptForm, FileFields } from "../products/product-files";
 import { AcceptDocumentFiles, paymentFiles } from "../purchases/purchase-files";
 import { TransChangeDto, TransPageDataDto } from "../transactions/transaction-form.dto";
+import { TransactionPrintService } from "../transactions/transaction-print.service";
 import {
   CreditNoteActionDto,
   CreditNotesListDto,
@@ -18,10 +19,14 @@ import {
   InvoiceFormDto,
   InvoiceFormQueryDto,
   InvoicePaymentDto,
+  InvoicePdfDto,
   InvoiceStatusDto,
   SalesDocQueryDto,
 } from "./invoices.dto";
 import { InvoicesService } from "./invoices.service";
+
+// CI3 Invoices $pageModuleUID
+const INVOICE_MODULE = 103;
 
 /**
  * Invoices page of CI3 (Invoices controller), same method names as its JS calls. The list, print, files and bulk
@@ -33,7 +38,10 @@ import { InvoicesService } from "./invoices.service";
 @UseFilters(CiExceptionFilter)
 @Controller("api/invoices")
 export class InvoicesController {
-  constructor(private readonly invoices: InvoicesService) {}
+  constructor(
+    private readonly invoices: InvoicesService,
+    private readonly print: TransactionPrintService
+  ) {}
 
   @Get("getPageData")
   @ApiOperation({ summary: "List page data: saved date range, InitTab / InitFilter, SummaryStats, OrgUsers, templates, PaymentTypes, BankAccounts, CreditNotes (creditnotes tab)" })
@@ -100,6 +108,20 @@ export class InvoicesController {
   @ApiOperation({ summary: "Record a cash payment and / or advance and on-account credit against an invoice" })
   async recordInvoicePayment(@Body() dto: InvoicePaymentDto, @UploadedFiles() files: FileFields, @Req() req: Request) {
     return ciSuccess(await this.invoices.recordPayment(writeContext(dto, req), { ...dto }, paymentFiles(files)));
+  }
+
+  @Post("getInvoicePdfBase64")
+  @HttpCode(HttpStatus.OK)
+  @AcceptForm()
+  @ApiOperation({ summary: "The invoice's A4 print as a PDF, base64-encoded, for an email attachment (Base64, Filename, Size)" })
+  async getInvoicePdfBase64(@Body() dto: InvoicePdfDto) {
+    const transUID = postInt(dto, "TransUID");
+    if (transUID <= 0) throw new CiValidationError("Invalid invoice.");
+    const pdf = await this.print.pdf(dto.orgId, transUID, INVOICE_MODULE, String(dto.PaperSize || "A4").trim().toUpperCase());
+    if (!pdf) throw new CiValidationError("Invoice not found.");
+    if (pdf.bytes.length === 0) throw new CiValidationError("Failed to generate PDF.");
+    const name = pdf.header.UniqueNumber ?? `Invoice_${transUID}`;
+    return ciSuccess({ Base64: pdf.bytes.toString("base64"), Filename: `${String(name).replace(/[^A-Za-z0-9_-]/g, "_")}.pdf`, Size: pdf.bytes.length });
   }
 
   @Get("getPaymentAttachments")

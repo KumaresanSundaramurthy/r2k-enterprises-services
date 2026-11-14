@@ -75,3 +75,8 @@ export class CreditNotesListDto extends OrgContextDto {
 export class SalesDocQueryDto extends OrgContextDto {
   @ApiProperty({ type: Number }) @Allow() TransUID?: string | number;
 }
+
+export class InvoicePdfDto extends OrgContextDto {
+  @ApiProperty({ type: Number }) @Allow() TransUID?: string | number;
+  @ApiPropertyOptional({ default: "A4", description: "A3, A4, A5, A6, Letter, Legal, Tabloid, Ledger (others fall back to A4)" }) @Allow() PaperSize?: string;
+}

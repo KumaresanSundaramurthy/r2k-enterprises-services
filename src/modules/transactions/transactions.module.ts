@@ -35,6 +35,6 @@ const shared = [TransactionEngineService, TransactionsRepository, DocumentEffect
     TransactionPrefixesService,
     PackingListsRepository,
   ],
-  exports: shared,
+  exports: [...shared, TransactionPrintService],
 })
 export class TransactionsModule {}
