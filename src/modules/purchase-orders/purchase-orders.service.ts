@@ -25,15 +25,18 @@ export class PurchaseOrdersService {
 
   // create / edit form data; edit adds the order, its lines, the vendor's address, files and charges
   async getFormData(orgUID: number, langCode: string, transUID: number) {
-    const basics = await this.engine.formBasics(PURCHASE_ORDER, orgUID, langCode, "none");
-    if (transUID <= 0) return { ...basics, TransactionCharges: [], IsEditMode: false };
-    const order = await this.engine.document(PURCHASE_ORDER, orgUID, transUID, langCode);
-    const [items, address, charges, files] = await Promise.all([
+    if (transUID <= 0) {
+      const basics = await this.engine.formBasics(PURCHASE_ORDER, orgUID, langCode, "none");
+      return { ...basics, TransactionCharges: [], IsEditMode: false };
+    }
+    const [basics, order, items, charges, files] = await Promise.all([
+      this.engine.formBasics(PURCHASE_ORDER, orgUID, langCode, "none"),
+      this.engine.document(PURCHASE_ORDER, orgUID, transUID, langCode),
       this.engine.items(orgUID, transUID),
-      this.engine.vendorAddress(Number(order.PartyUID), langCode),
       this.engine.chargesOf(orgUID, transUID),
       this.engine.attachmentsOf(orgUID, transUID),
     ]);
+    const address = await this.engine.vendorAddress(Number(order.PartyUID), langCode);
     return { ...basics, POData: order, POItems: items, VendorAddr: address, TransactionCharges: charges, POAttachments: files, IsEditMode: true };
   }
 

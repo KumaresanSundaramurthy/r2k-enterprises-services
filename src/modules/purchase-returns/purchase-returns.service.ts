@@ -56,19 +56,23 @@ export class PurchaseReturnsService {
 
   // create / edit form data; edit adds the return, its lines, charges, the vendor's address, serials and files
   async getFormData(orgUID: number, langCode: string, transUID: number) {
-    const basics = await this.engine.formBasics(PURCHASE_RETURN, orgUID, langCode, "list");
     if (transUID <= 0) {
-      const [paymentTypes, banks] = await Promise.all([this.paymentLookups.paymentTypes(), this.paymentLookups.bankAccounts(orgUID)]);
+      const [basics, paymentTypes, banks] = await Promise.all([
+        this.engine.formBasics(PURCHASE_RETURN, orgUID, langCode, "list"),
+        this.paymentLookups.paymentTypes(),
+        this.paymentLookups.bankAccounts(orgUID),
+      ]);
       return { ...basics, PaymentTypes: paymentTypes, BankAccounts: banks, TransactionCharges: [], IsEditMode: false };
     }
-    const ret = await this.engine.document(PURCHASE_RETURN, orgUID, transUID, langCode);
-    const [items, charges, address, serials, files] = await Promise.all([
+    const [basics, ret, items, charges, serials, files] = await Promise.all([
+      this.engine.formBasics(PURCHASE_RETURN, orgUID, langCode, "list"),
+      this.engine.document(PURCHASE_RETURN, orgUID, transUID, langCode),
       this.engine.items(orgUID, transUID),
       this.engine.chargesOf(orgUID, transUID),
-      this.engine.vendorAddress(Number(ret.PartyUID), langCode),
       this.serials.grouped(orgUID, transUID, "PurchaseReturn"),
       this.engine.attachmentsOf(orgUID, transUID),
     ]);
+    const address = await this.engine.vendorAddress(Number(ret.PartyUID), langCode);
     return { ...basics, PRData: ret, PRItems: items, TransactionCharges: charges, VendorAddr: address, PRSerialsByProd: serials, PRAttachments: files, IsEditMode: true };
   }
 

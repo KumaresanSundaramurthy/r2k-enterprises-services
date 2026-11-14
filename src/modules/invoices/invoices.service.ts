@@ -75,8 +75,7 @@ export class InvoicesService {
     const [basics, paymentTypes, banks] = await Promise.all([this.engine.formBasics(INVOICE, orgUID, langCode, "list"), this.paymentLookups.paymentTypes(), this.paymentLookups.bankAccounts(orgUID)]);
     const lookups = { PaymentTypes: paymentTypes, BankAccounts: banks };
     if (uid > 0) {
-      const invoice = await this.engine.document(INVOICE, orgUID, uid, langCode);
-      const items = await this.engine.items(orgUID, uid);
+      const [invoice, items] = await Promise.all([this.engine.document(INVOICE, orgUID, uid, langCode), this.engine.items(orgUID, uid)]);
       const [returned, hasReturns, address, files, charges, serials] = await Promise.all([
         this.reads.returnedQuantities(orgUID, items.map((item) => Number(item.TransProdUID))),
         this.sales.hasSalesReturns(orgUID, uid),

@@ -35,11 +35,13 @@ export class QuotationsService {
    * CloneItems). Edit: the quotation, its lines, the customer's address, files and charges.
    */
   async getFormData(orgUID: number, langCode: string, transUID: number, fromQuotationUID: number) {
-    const basics = await this.engine.formBasics(QUOTATION, orgUID, langCode);
-    const validityDays = basics.QuotValidityDays >= 1 ? basics.QuotValidityDays : 7;
-    const defaults = { DefaultValidityDays: validityDays, DefaultValidityDate: addDays(todayDate(), validityDays) };
     if (transUID > 0) {
-      const quotation = await this.engine.document(QUOTATION, orgUID, transUID, langCode);
+      const [basics, quotation] = await Promise.all([
+        this.engine.formBasics(QUOTATION, orgUID, langCode),
+        this.engine.document(QUOTATION, orgUID, transUID, langCode),
+      ]);
+      const validityDays = basics.QuotValidityDays >= 1 ? basics.QuotValidityDays : 7;
+      const defaults = { DefaultValidityDays: validityDays, DefaultValidityDate: addDays(todayDate(), validityDays) };
       const [items, files, charges, address] = await Promise.all([
         this.engine.items(orgUID, transUID),
         this.engine.attachmentsOf(orgUID, transUID),
@@ -48,12 +50,13 @@ export class QuotationsService {
       ]);
       return { ...basics, ...defaults, QuotData: quotation, QuotItems: items, CustAddr: address, QuotAttachments: files, TransactionCharges: charges, IsEditMode: true };
     }
-    let clone = null;
-    let cloneItems: Record<string, unknown>[] = [];
-    if (fromQuotationUID > 0) {
-      clone = await this.engine.document(QUOTATION, orgUID, fromQuotationUID).catch(() => null);
-      if (clone) cloneItems = await this.engine.items(orgUID, fromQuotationUID);
-    }
+    const [basics, clone] = await Promise.all([
+      this.engine.formBasics(QUOTATION, orgUID, langCode),
+      fromQuotationUID > 0 ? this.engine.document(QUOTATION, orgUID, fromQuotationUID).catch(() => null) : Promise.resolve(null),
+    ]);
+    const validityDays = basics.QuotValidityDays >= 1 ? basics.QuotValidityDays : 7;
+    const defaults = { DefaultValidityDays: validityDays, DefaultValidityDate: addDays(todayDate(), validityDays) };
+    const cloneItems = clone ? await this.engine.items(orgUID, fromQuotationUID) : [];
     return { ...basics, ...defaults, CloneData: clone, CloneItems: cloneItems, TransactionCharges: [], IsEditMode: false };
   }
 

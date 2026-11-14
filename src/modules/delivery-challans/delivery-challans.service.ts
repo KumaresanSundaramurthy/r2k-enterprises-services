@@ -42,15 +42,15 @@ export class DeliveryChallansService {
 
   // create / edit form data. New: from a sales order (fromSalesOrder) or a challan to clone (fromClone)
   async getFormData(orgUID: number, langCode: string, transUID: number, fromSalesOrderUID: number, fromCloneUID: number) {
-    const basics = await this.engine.formBasics(DELIVERY_CHALLAN, orgUID, langCode, "list");
     if (transUID > 0) {
-      const challan = await this.engine.document(DELIVERY_CHALLAN, orgUID, transUID, langCode);
-      const [items, address, files, charges] = await Promise.all([
+      const [basics, challan, items, files, charges] = await Promise.all([
+        this.engine.formBasics(DELIVERY_CHALLAN, orgUID, langCode, "list"),
+        this.engine.document(DELIVERY_CHALLAN, orgUID, transUID, langCode),
         this.engine.items(orgUID, transUID),
-        this.engine.customerAddress(Number(challan.PartyUID), langCode),
         this.engine.attachmentsOf(orgUID, transUID),
         this.engine.chargesOf(orgUID, transUID),
       ]);
+      const address = await this.engine.customerAddress(Number(challan.PartyUID), langCode);
       return { ...basics, DCData: challan, DCItems: items, CustAddr: address, DCAttachments: files, TransactionCharges: charges, IsEditMode: true };
     }
     const source = async (kind: typeof SALES_ORDER, sourceUID: number) => {
@@ -58,7 +58,11 @@ export class DeliveryChallansService {
       const doc = await this.engine.document(kind, orgUID, sourceUID).catch(() => null);
       return [doc, doc ? await this.engine.items(orgUID, sourceUID) : []] as const;
     };
-    const [[order, orderItems], [clone, cloneItems]] = await Promise.all([source(SALES_ORDER, fromSalesOrderUID), source(DELIVERY_CHALLAN, fromCloneUID)]);
+    const [basics, [order, orderItems], [clone, cloneItems]] = await Promise.all([
+      this.engine.formBasics(DELIVERY_CHALLAN, orgUID, langCode, "list"),
+      source(SALES_ORDER, fromSalesOrderUID),
+      source(DELIVERY_CHALLAN, fromCloneUID),
+    ]);
     return {
       ...basics,
       FromSOUID: fromSalesOrderUID,

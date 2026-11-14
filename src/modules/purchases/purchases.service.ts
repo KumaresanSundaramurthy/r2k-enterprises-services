@@ -66,14 +66,14 @@ export class PurchasesService {
     ]);
     const lookups = { PaymentTypes: paymentTypes, BankAccounts: banks };
     if (transUID > 0) {
-      const bill = await this.engine.document(PURCHASE, orgUID, transUID, langCode);
-      const [items, files, serials, address, charges] = await Promise.all([
+      const [bill, items, files, serials, charges] = await Promise.all([
+        this.engine.document(PURCHASE, orgUID, transUID, langCode),
         this.engine.items(orgUID, transUID),
         this.engine.attachmentsOf(orgUID, transUID),
         this.serials.grouped(orgUID, transUID, "Purchase"),
-        this.engine.vendorAddress(Number(bill.PartyUID), langCode),
         this.engine.chargesOf(orgUID, transUID),
       ]);
+      const address = await this.engine.vendorAddress(Number(bill.PartyUID), langCode);
       return { ...basics, ...lookups, PurchData: bill, PurchItems: items, PurchAttachments: files, PurchSerialsByProd: serials, VendorAddr: address, TransactionCharges: charges, IsEditMode: true };
     }
     let order: Row | null = null;

@@ -60,13 +60,17 @@ export class SalesReturnsService {
 
   // create / edit form data; edit adds the return, its lines, charges, serials and files
   async getFormData(orgUID: number, langCode: string, transUID: number) {
-    const basics = await this.engine.formBasics(SALES_RETURN, orgUID, langCode, "list");
     if (transUID <= 0) {
-      const [paymentTypes, banks] = await Promise.all([this.paymentLookups.paymentTypes(), this.paymentLookups.bankAccounts(orgUID)]);
+      const [basics, paymentTypes, banks] = await Promise.all([
+        this.engine.formBasics(SALES_RETURN, orgUID, langCode, "list"),
+        this.paymentLookups.paymentTypes(),
+        this.paymentLookups.bankAccounts(orgUID),
+      ]);
       return { ...basics, PaymentTypes: paymentTypes, BankAccounts: banks, TransactionCharges: [], IsEditMode: false };
     }
-    const ret = await this.engine.document(SALES_RETURN, orgUID, transUID, langCode);
-    const [items, charges, serials, files] = await Promise.all([
+    const [basics, ret, items, charges, serials, files] = await Promise.all([
+      this.engine.formBasics(SALES_RETURN, orgUID, langCode, "list"),
+      this.engine.document(SALES_RETURN, orgUID, transUID, langCode),
       this.engine.items(orgUID, transUID),
       this.engine.chargesOf(orgUID, transUID),
       this.serials.grouped(orgUID, transUID, "SalesReturn"),

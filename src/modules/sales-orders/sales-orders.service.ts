@@ -29,24 +29,23 @@ export class SalesOrdersService {
    */
   async getFormData(orgUID: number, langCode: string, transUID: number, fromQuotationUID: number) {
     if (transUID > 0) {
-      const order = await this.engine.document(SALES_ORDER, orgUID, transUID, langCode);
-      const [basics, items, files, charges, address] = await Promise.all([
+      const [order, basics, items, files, charges] = await Promise.all([
+        this.engine.document(SALES_ORDER, orgUID, transUID, langCode),
         this.engine.formBasics(SALES_ORDER, orgUID, langCode, "single"),
         this.engine.items(orgUID, transUID),
         this.engine.attachmentsOf(orgUID, transUID),
         this.engine.chargesOf(orgUID, transUID),
-        this.engine.customerAddress(Number(order.PartyUID), langCode),
       ]);
+      const address = await this.engine.customerAddress(Number(order.PartyUID), langCode);
       return { ...basics, SOData: order, SOItems: items, CustAddr: address, SOAttachments: files, TransactionCharges: charges, IsEditMode: true };
     }
-    const basics = await this.engine.formBasics(SALES_ORDER, orgUID, langCode);
-    let quotation = null;
+    const [basics, quotation] = await Promise.all([
+      this.engine.formBasics(SALES_ORDER, orgUID, langCode),
+      fromQuotationUID > 0 ? this.engine.document(QUOTATION, orgUID, fromQuotationUID).catch(() => null) : Promise.resolve(null),
+    ]);
     let quotationItems: Record<string, unknown>[] = [];
     let quotationFiles: Record<string, unknown>[] = [];
-    if (fromQuotationUID > 0) {
-      quotation = await this.engine.document(QUOTATION, orgUID, fromQuotationUID).catch(() => null);
-      if (quotation) [quotationItems, quotationFiles] = await Promise.all([this.engine.items(orgUID, fromQuotationUID), this.engine.attachmentsOf(orgUID, fromQuotationUID)]);
-    }
+    if (quotation) [quotationItems, quotationFiles] = await Promise.all([this.engine.items(orgUID, fromQuotationUID), this.engine.attachmentsOf(orgUID, fromQuotationUID)]);
     return {
       ...basics,
       FromQuotationUID: fromQuotationUID,

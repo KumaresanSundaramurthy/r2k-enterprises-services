@@ -31,15 +31,18 @@ export class ProformaInvoicesService {
 
   // create / edit form data (edit: PFData, PFItems, CustAddr, PFAttachments, TransactionCharges)
   async getFormData(orgUID: number, langCode: string, transUID: number) {
-    const basics = await this.engine.formBasics(PROFORMA_INVOICE, orgUID, langCode, "list");
-    if (transUID <= 0) return { ...basics, TransactionCharges: [], IsEditMode: false };
-    const proforma = await this.engine.document(PROFORMA_INVOICE, orgUID, transUID, langCode);
-    const [items, address, files, charges] = await Promise.all([
+    if (transUID <= 0) {
+      const basics = await this.engine.formBasics(PROFORMA_INVOICE, orgUID, langCode, "list");
+      return { ...basics, TransactionCharges: [], IsEditMode: false };
+    }
+    const [basics, proforma, items, files, charges] = await Promise.all([
+      this.engine.formBasics(PROFORMA_INVOICE, orgUID, langCode, "list"),
+      this.engine.document(PROFORMA_INVOICE, orgUID, transUID, langCode),
       this.engine.items(orgUID, transUID),
-      this.engine.customerAddress(Number(proforma.PartyUID), langCode),
       this.engine.attachmentsOf(orgUID, transUID),
       this.engine.chargesOf(orgUID, transUID),
     ]);
+    const address = await this.engine.customerAddress(Number(proforma.PartyUID), langCode);
     return { ...basics, PFData: proforma, PFItems: items, CustAddr: address, PFAttachments: files, TransactionCharges: charges, IsEditMode: true };
   }
 
