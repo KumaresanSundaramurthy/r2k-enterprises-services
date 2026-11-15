@@ -1,0 +1,225 @@
+import { Injectable } from "@nestjs/common";
+import { parseDateTime, phpDate } from "../../common/utils/php-compat";
+import { OrgSettingsService } from "../../core/org/org-settings.service";
+import { CiValidationError } from "../../core/response/ci-response";
+import { isIsoDate } from "../accounting/accounting-common";
+import { todayIn } from "../hrms/hrms-common";
+import { GroupBy, ReportsRepository } from "./reports.repository";
+
+const GROUP_BYS: GroupBy[] = ["month", "quarter", "year"];
+
+// The document module and party behind each item-wise / register report (CI3 Reports_model wrappers)
+const DOC_REPORTS = {
+  invoice: { moduleUID: 103, partyType: "C" },
+  purchase: { moduleUID: 105, partyType: "S" },
+  salesReturn: { moduleUID: 106, partyType: "C" },
+  purchaseReturn: { moduleUID: 108, partyType: "S" },
+  deliveryChallan: { moduleUID: 112, partyType: "C" },
+} as const;
+
+export type ItemwiseReport = "invoice" | "purchase" | "salesReturn" | "purchaseReturn";
+export type RegisterReport = "invoice" | "purchase" | "salesReturn" | "purchaseReturn" | "deliveryChallan";
+
+/**
+ * CI3 Reports controller data actions. Each answers like CI3 ({ Status: "Success", rows }), so the report pages
+ * only change the URL; errors come back as { Error: true, Message } (the pages show Message when Status is not
+ * "Success").
+ */
+@Injectable()
+export class ReportsService {
+  constructor(
+    private readonly repo: ReportsRepository,
+    private readonly orgSettings: OrgSettingsService
+  ) {}
+
+  // from / to default to 1 January and today of the organisation's year (CI3: the server's date)
+  private async range(orgUID: number, from: unknown, to: unknown): Promise<{ from: string; to: string }> {
+    const today = todayIn((await this.orgSettings.get(orgUID)).Timezone);
+    const result = { from: String(from || "") || `${today.slice(0, 4)}-01-01`, to: String(to || "") || today };
+    if (!isIsoDate(result.from) || !isIsoDate(result.to)) throw new CiValidationError("Invalid date format.");
+    return result;
+  }
+
+  private static groupBy(value: unknown): GroupBy {
+    return GROUP_BYS.includes(value as GroupBy) ? (value as GroupBy) : "month";
+  }
+
+  private static ok(rows: unknown[]) {
+    return { Status: "Success", rows };
+  }
+
+  // getSalesSummaryData — Invoice (103) and Sales Return (106) per period
+  async salesSummary(orgUID: number, from: unknown, to: unknown, groupBy: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.tradeSummary(orgUID, [103, 106], r.from, r.to, ReportsService.groupBy(groupBy)));
+  }
+
+  // getPurchaseSummaryData — Purchase (105) and Purchase Return (108) per period
+  async purchaseSummary(orgUID: number, from: unknown, to: unknown, groupBy: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.tradeSummary(orgUID, [105, 108], r.from, r.to, ReportsService.groupBy(groupBy)));
+  }
+
+  // getMonthlySummaryData — the calendar year's 103 / 105 / 106 / 108 totals per month
+  async monthlySummary(orgUID: number, year: unknown) {
+    const y = String(year || "") || todayIn((await this.orgSettings.get(orgUID)).Timezone).slice(0, 4);
+    if (!/^\d{4}$/.test(y)) throw new CiValidationError("Invalid year.");
+    return ReportsService.ok(await this.repo.monthlySummary(orgUID, `${y}-01-01`, `${y}-12-31`));
+  }
+
+  // getPaymentReceivedData — customer receipts in the range
+  async paymentReceived(orgUID: number, from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.payments(orgUID, "C", r.from, r.to));
+  }
+
+  // getPaymentMadeData — vendor payments in the range
+  async paymentMade(orgUID: number, from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.payments(orgUID, "S", r.from, r.to));
+  }
+
+  // get{Invoice,Purchase,SalesReturn,PurchaseReturn}ItemwiseData — every line of the module's documents in the range
+  async itemwise(orgUID: number, report: ItemwiseReport, from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    const { moduleUID, partyType } = DOC_REPORTS[report];
+    return ReportsService.ok(await this.repo.billwiseItems(orgUID, moduleUID, partyType, r.from, r.to));
+  }
+
+  // get{Sales,Purchase,SalesReturn,PurchaseReturn,DeliveryChallan}RegisterData — one row per document with its tax breakup
+  async register(orgUID: number, report: RegisterReport, from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    const { moduleUID, partyType } = DOC_REPORTS[report];
+    return ReportsService.ok(await this.repo.transRegister(orgUID, moduleUID, partyType, r.from, r.to));
+  }
+
+  // ── Tax reports ───────────────────────────────────────────────────────────
+
+  // GSTR month / year: a bad or missing value falls back to the current month / year (as CI3 did)
+  private async gstPeriod(orgUID: number, month: unknown, year: unknown) {
+    const today = todayIn((await this.orgSettings.get(orgUID)).Timezone);
+    const m = Number(month), y = Number(year);
+    return {
+      month: Number.isInteger(m) && m >= 1 && m <= 12 ? m : Number(today.slice(5, 7)),
+      year: Number.isInteger(y) && y >= 2000 && y <= 2099 ? y : Number(today.slice(0, 4)),
+    };
+  }
+
+  // GSTR-7 / HSN / TDS / TCS range: a bad or missing date falls back to the 1st of this month → today (as CI3 did)
+  private async monthToDate(orgUID: number, from: unknown, to: unknown) {
+    const today = todayIn((await this.orgSettings.get(orgUID)).Timezone);
+    return { from: isIsoDate(from) ? from : `${today.slice(0, 7)}-01`, to: isIsoDate(to) ? to : today };
+  }
+
+  // getGstr1Data — B2B, B2CS and CDNR for the month
+  async gstr1(orgUID: number, month: unknown, year: unknown) {
+    const p = await this.gstPeriod(orgUID, month, year);
+    return { Status: "Success", ...(await this.repo.gstr1(orgUID, p.month, p.year)) };
+  }
+
+  // getGstr2bData — purchase bills from GSTIN vendors for the month
+  async gstr2b(orgUID: number, month: unknown, year: unknown) {
+    const p = await this.gstPeriod(orgUID, month, year);
+    return ReportsService.ok(await this.repo.gstr2b(orgUID, p.month, p.year));
+  }
+
+  // getGstr3bData — outward and ITC totals for the month
+  async gstr3b(orgUID: number, month: unknown, year: unknown) {
+    const p = await this.gstPeriod(orgUID, month, year);
+    return { Status: "Success", ...(await this.repo.gstr3b(orgUID, p.month, p.year)) };
+  }
+
+  /**
+   * getGstr7Data / getTdsPayableData (expenses with TDS), getHsnData, getTdsReceivableData. CI3's TDS receivable /
+   * payable actions called an unloaded model ($this->Reports_model) and always failed.
+   */
+  async taxRange(orgUID: number, report: "tdsExpenses" | "hsnSummary" | "tdsReceivable", from: unknown, to: unknown) {
+    const r = await this.monthToDate(orgUID, from, to);
+    return ReportsService.ok(await this.repo[report](orgUID, r.from, r.to));
+  }
+
+  // getTcsReceivableData / getTcsPayableData — TCS is not tracked yet, so always empty (as CI3)
+  tcs() {
+    return ReportsService.ok([]);
+  }
+
+  // getPLStatementData / getTrialBalanceData — ledger totals for the range
+  async ledgerReport(orgUID: number, report: "plStatement" | "trialBalance", from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo[report](orgUID, r.from, r.to));
+  }
+
+  // getBalanceSheetData — ledger totals up to a date (default today)
+  async balanceSheet(orgUID: number, asOf: unknown) {
+    const date = String(asOf || "") || todayIn((await this.orgSettings.get(orgUID)).Timezone);
+    if (!isIsoDate(date)) throw new CiValidationError("Invalid date format.");
+    return ReportsService.ok(await this.repo.balanceSheet(orgUID, date));
+  }
+
+  // getBankStatementData — payments in the range for one account (0 = all)
+  async bankStatement(orgUID: number, from: unknown, to: unknown, accountUID: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.bankStatement(orgUID, r.from, r.to, Number(accountUID) || 0));
+  }
+
+  // getBankAccounts — the bank statement page's account list
+  async bankAccounts(orgUID: number) {
+    return { Data: await this.repo.bankAccounts(orgUID) };
+  }
+
+  /**
+   * getDayBookData — the day's documents and payments ({ Status, entries }); EntryTime (stored in UTC) is shown as
+   * the organisation's H:i:s. CI3 called api/transactions/getDayBookEntries, which did not exist, so it was empty.
+   */
+  async dayBook(orgUID: number, date: unknown) {
+    const timezone = (await this.orgSettings.get(orgUID)).Timezone;
+    const day = String(date || "") || todayIn(timezone);
+    if (!isIsoDate(day)) throw new CiValidationError("Invalid date format.");
+    const entries = (await this.repo.dayBook(orgUID, day)).map((entry) => {
+      const at = parseDateTime(String(entry.EntryTime ?? ""));
+      return at ? { ...entry, EntryTime: phpDate("H:i:s", at, timezone) } : entry;
+    });
+    return { Status: "Success", entries };
+  }
+
+  // getItemWiseSalesData / getItemWisePurchaseData — totals per product in the range
+  async itemTotals(orgUID: number, kind: "sales" | "purchase", from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.itemTotals(orgUID, kind, r.from, r.to));
+  }
+
+  // getBrandWiseSalesData — invoice totals per brand in the range
+  async brandWiseSales(orgUID: number, from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.brandWiseSales(orgUID, r.from, r.to));
+  }
+
+  // getLowStockAlertData / getStockSummaryData / getVariantStockData — current stock (no date range)
+  async stock(orgUID: number, report: "lowStock" | "stockSummary" | "variantStock") {
+    return ReportsService.ok(await this.repo[report](orgUID));
+  }
+
+  // getCustomerOutstandingData / getSupplierOutstandingData — parties with open invoices / bills
+  async outstanding(orgUID: number, party: "C" | "S", langCode: string) {
+    return ReportsService.ok(await this.repo.outstanding(orgUID, party, langCode));
+  }
+
+  // getCustomerAgeingData — open invoice balances in age buckets
+  async customerAgeing(orgUID: number, langCode: string) {
+    return ReportsService.ok(await this.repo.outstanding(orgUID, "C", langCode, true));
+  }
+
+  // get{Customer,Supplier}LedgerData — the range's entries plus the opening balance before it
+  async ledger(orgUID: number, party: "C" | "S", partyUID: number, from: unknown, to: unknown) {
+    if (!(partyUID > 0)) throw new CiValidationError(party === "C" ? "Please select a customer." : "Please select a supplier.");
+    const r = await this.range(orgUID, from, to);
+    const [rows, opening] = await Promise.all([this.repo.ledger(orgUID, party, partyUID, r.from, r.to), this.repo.ledgerOpening(orgUID, party, partyUID, r.from)]);
+    return { ...ReportsService.ok(rows), opening };
+  }
+
+  // getExpenseRegisterData — committed expenses in the range
+  async expenseRegister(orgUID: number, from: unknown, to: unknown) {
+    const r = await this.range(orgUID, from, to);
+    return ReportsService.ok(await this.repo.expenseRegister(orgUID, r.from, r.to));
+  }
+}
