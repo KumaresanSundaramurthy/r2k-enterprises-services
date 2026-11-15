@@ -9,30 +9,38 @@ const pick = (req: Request, key: string): unknown => {
   return Array.isArray(value) ? value[0] : value;
 };
 
-/**
- * CI3 notifyError() for a failed request: the route as the title, plus the organisation, branch and user the
- * caller sent (orgId / branchId / userId, CI3's JwtData), the HTTP method and the full URL.
- */
-export function notifyRequestError(host: ArgumentsHost, exception: unknown): void {
-  if (host.getType() !== "http") {
-    TelegramNotifier.error("Unhandled error", exception);
-    return;
-  }
+// The route as the title, plus the organisation, branch and user the caller sent (CI3's JwtData), method and URL
+function requestDetails(host: ArgumentsHost) {
   const req = host.switchToHttp().getRequest<Request>();
   const route = (req.route as { path?: string } | undefined)?.path ?? req.path;
   const orgId = pick(req, "orgId");
   const userId = pick(req, "userId");
   const branchId = pick(req, "branchId");
-
-  TelegramNotifier.error(
-    `${req.method} ${route}`,
-    exception,
-    {
+  return {
+    title: `${req.method} ${route}`,
+    context: {
       Organisation: orgId !== undefined ? `#${orgId}` : "—",
       "Org Branch": branchId !== undefined ? `#${branchId}` : "—",
       "Triggered By": userId !== undefined ? `#${userId}` : "—",
       "HTTP Method": req.method,
     },
-    `${req.protocol}://${req.get("host") ?? "localhost"}${req.originalUrl}`
-  );
+    url: `${req.protocol}://${req.get("host") ?? "localhost"}${req.originalUrl}`,
+  };
+}
+
+/** CI3 notifyError() for a failed request (unexpected error or server failure) — always sent. */
+export function notifyRequestError(host: ArgumentsHost, exception: unknown): void {
+  if (host.getType() !== "http") {
+    TelegramNotifier.error("Unhandled error", exception);
+    return;
+  }
+  const { title, context, url } = requestDetails(host);
+  TelegramNotifier.error(title, exception, context, url);
+}
+
+/** A request refused with a validation / user message — sent only when TELEGRAM_NOTIFY_LEVEL is "all". */
+export function notifyRequestValidation(host: ArgumentsHost, message: string): void {
+  if (host.getType() !== "http" || !TelegramNotifier.notifyValidation()) return;
+  const { title, context, url } = requestDetails(host);
+  TelegramNotifier.validation(title, message, context, url);
 }

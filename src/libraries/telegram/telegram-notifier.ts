@@ -61,6 +61,24 @@ export class TelegramNotifier {
     TelegramNotifier.send(lines.join("\n"));
   }
 
+  /**
+   * TELEGRAM_NOTIFY_LEVEL: "all" (default, like CI3 — validation / user errors are sent too) or "errors" (only
+   * unexpected and server errors).
+   */
+  static notifyValidation(): boolean {
+    return (process.env.TELEGRAM_NOTIFY_LEVEL || "all").trim().toLowerCase() !== "errors";
+  }
+
+  /** A validation / user error (Error: true message, 4xx) — sent only when TELEGRAM_NOTIFY_LEVEL is "all". */
+  static validation(title: string, message: string, context: Context = {}, url?: string): void {
+    if (!TelegramNotifier.notifyValidation()) return;
+    if (TelegramNotifier.inCooldown(`V|${title}|${message}`)) return;
+    const lines = ["⚠️ <b>VALIDATION</b>", `<b>${esc(title)}</b>`, "", `\u{1F4CB} <b>Message:</b> ${esc(message)}`];
+    lines.push(...contextLines(context));
+    lines.push("", `\u{1F310} <b>URL:</b> <code>${esc(url ?? "—")}</code>`, `\u{1F550} <b>Time:</b> ${now()}`, `⚙️ <b>Env:</b> ${esc(process.env.CI_ENV || "unknown")}`);
+    TelegramNotifier.send(lines.join("\n"));
+  }
+
   /** Telegramnotifier::alert — an informational message (no exception). */
   static alert(title: string, context: Context = {}): void {
     if (TelegramNotifier.inCooldown(`A|${title}|${JSON.stringify(context)}`)) return;
@@ -80,6 +98,8 @@ export class TelegramNotifier {
   }
 
   private static send(text: string): void {
+    // TELEGRAM_ENABLED=no (or false / 0 / off) switches every notification off; anything else, or unset, keeps them on
+    if (["no", "false", "0", "off"].includes((process.env.TELEGRAM_ENABLED ?? "").trim().toLowerCase())) return;
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) return;
