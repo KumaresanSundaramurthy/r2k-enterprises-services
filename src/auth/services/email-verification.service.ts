@@ -1,3 +1,4 @@
+import { TelegramNotifier } from "../../libraries/telegram/telegram-notifier";
 import { BadRequestException, GoneException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { MailService } from "../../common/mail/mail.service";
@@ -56,9 +57,11 @@ export class EmailVerificationService {
       ? await this.organisationRepository.findUnverifiedByEmail(value)
       : await this.organisationRepository.findUnverifiedByUserName(value);
     if (org) {
-      await this.sendVerificationEmail(toInt(org.OrgUID), org.FirstName || "there", org.OrgEmail.trim().toLowerCase()).catch(
-        (err) => this.logger.error(`Verification email for org ${org.OrgUID} failed: ${(err as Error).message}`)
-      );
+      const toEmail = org.OrgEmail.trim().toLowerCase();
+      await this.sendVerificationEmail(toInt(org.OrgUID), org.FirstName || "there", toEmail).catch((err) => {
+        this.logger.error(`Verification email for org ${org.OrgUID} failed: ${(err as Error).message}`);
+        TelegramNotifier.error("Signup_model::sendVerificationEmail", err, { OrgUID: org.OrgUID, ToEmail: toEmail, FirstName: org.FirstName });
+      });
     }
     return { message: GENERIC_RESEND_MESSAGE };
   }

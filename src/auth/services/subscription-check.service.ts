@@ -2,7 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { MailService } from "../../common/mail/mail.service";
 import { RedisService } from "../../common/redis/redis.service";
-import { nowDateTime, parseDateTime, toInt, todayDate } from "../../common/utils/php-compat";
+import { nowDateTime, parseDateTime, phpDate, toInt, todayDate } from "../../common/utils/php-compat";
+import { TelegramNotifier } from "../../libraries/telegram/telegram-notifier";
 import { SubscriptionRepository } from "../repositories/subscription.repository";
 import { SecurityRepository } from "../repositories/security.repository";
 import { RequestMeta } from "../utils/device-info";
@@ -42,6 +43,7 @@ export class SubscriptionCheckService {
     try {
       const sub = await this.subscriptionRepository.getUserSubscription(userUID);
       if (!sub) {
+        TelegramNotifier.alert("[SUB-CHECK] getUserSubscription failed", { UserUID: userUID, DataIsNull: "yes" });
         result.message = "User not found";
         return result;
       }
@@ -62,6 +64,7 @@ export class SubscriptionCheckService {
         const endDate = parseDateTime(sub.SubscriptionEndDate);
         if (!endDate) {
           result.message = "No subscription end date set.";
+          TelegramNotifier.alert("[SUB-CHECK] Login BLOCKED — no EndDate", { UserUID: userUID, Status_DB: status, EndDate: "NULL", isValid: "FALSE" });
           return result;
         }
         const now = new Date();
@@ -81,16 +84,35 @@ export class SubscriptionCheckService {
           } else {
             result.message = "Subscription expired. Please renew to continue.";
             await this.subscriptionRepository.markLatestExpired(toInt(sub.OrgUID));
+            TelegramNotifier.alert("[SUB-CHECK] Login BLOCKED — past grace", {
+              UserUID: userUID,
+              Status_DB: status,
+              EndDate_Raw: sub.SubscriptionEndDate,
+              EndDate_UTC: phpDate("Y-m-d H:i:s", endDate, "UTC"),
+              Now_UTC: phpDate("Y-m-d H:i:s", now, "UTC"),
+              DaysRemaining: daysRemaining,
+              GracePeriodDays: toInt(sub.GracePeriodDays),
+              GraceEnd_UTC: phpDate("Y-m-d H:i:s", graceEnd, "UTC"),
+              isValid: "FALSE",
+            });
           }
         }
       } else if (status === "Expired") {
         result.message = "Your subscription has expired. Please renew to continue using the service.";
+        TelegramNotifier.alert("[SUB-CHECK] Login BLOCKED — Status=Expired", { UserUID: userUID, Status_DB: status, EndDate: sub.SubscriptionEndDate ?? "NULL", isValid: "FALSE" });
       } else if (status === "Suspended") {
         result.message = "Your account has been suspended. Please contact support.";
       } else if (status === "Cancelled") {
         result.message = "Your subscription has been cancelled.";
       } else {
         result.message = "No active subscription found for your organisation. Please contact support.";
+        TelegramNotifier.alert("[SUB-CHECK] Login BLOCKED — no subscription row", {
+          UserUID: userUID,
+          Status_DB: sub.SubscriptionStatus ?? "NULL",
+          OrgSubUID: sub.OrgSubUID ?? "NULL",
+          OrgUID: sub.OrgUID ?? "NULL",
+          isValid: "FALSE",
+        });
       }
 
       if (result.isValid && result.daysRemaining > 0 && result.daysRemaining <= 7) {
@@ -98,6 +120,7 @@ export class SubscriptionCheckService {
       }
     } catch (err) {
       this.logger.error(`Subscription check failed for user ${userUID}: ${(err as Error).message}`);
+      TelegramNotifier.error("Subscription::checkSubscription", err, { UserUID: userUID });
       result.message = `Error checking subscription: ${(err as Error).message}`;
     }
     return result;

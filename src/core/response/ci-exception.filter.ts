@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
 import { Response } from "express";
+import { notifyRequestError } from "../../libraries/telegram/notify-request-error";
 import { CiFieldValidationError, CiValidationError, ciError } from "./ci-response";
 
 /**
@@ -30,12 +31,16 @@ export class CiExceptionFilter implements ExceptionFilter {
         res.status(status).json({ ...ciError(message), SessionExpired: true });
         return;
       }
+      // Server-side failures (e.g. Redis / a service unavailable) are alerted; validation and similar are not
+      if (status >= HttpStatus.INTERNAL_SERVER_ERROR) notifyRequestError(host, exception);
       res.status(HttpStatus.OK).json(ciError(message));
       return;
     }
 
-    // Unexpected failures are logged in full; the caller gets a safe message instead of SQL/stack details.
+    // Unexpected failures are logged in full and sent to Telegram (CI3 notifyError); the caller gets a safe
+    // message instead of SQL/stack details.
     this.logger.error(exception instanceof Error ? exception.stack ?? exception.message : String(exception));
+    notifyRequestError(host, exception);
     res.status(HttpStatus.OK).json(ciError("Something went wrong. Please try again."));
   }
 
