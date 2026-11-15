@@ -109,19 +109,25 @@ export class TransactionPrintService {
   async pdf(orgUID: number, transUID: number, moduleUID: number, paperSize: string): Promise<{ header: Row; bytes: Buffer } | null> {
     const header = await this.reads.find(orgUID, transUID, moduleUID);
     if (!header) return null;
+    const size = PdfRendererService.paperFormat(paperSize);
+    const html = (await this.a4Html(orgUID, moduleUID, header))
+      .replace(/__COPY_LABEL__/g, "ORIGINAL FOR RECIPIENT")
+      .replace("</head>", "<style>body{padding:0!important;margin:0!important;}.print-content{margin:0!important;}#trans-type-header td{border-left:none!important;border-right:none!important;}</style></head>")
+      .replace(/@page\s*\{[^}]*\}/g, `@page{size:${size};margin:10mm 5mm;}`);
+    const bytes = await this.pdfRenderer.render(html, { paperSize: size, margin: { top: "10mm", bottom: "10mm", left: "5mm", right: "5mm" } });
+    return { header, bytes };
+  }
+
+  // _renderA4Html with its inputs loaded — the A4 print HTML of a document already read (header)
+  async a4Html(orgUID: number, moduleUID: number, header: Row): Promise<string> {
+    const transUID = Number(header.TransUID);
     const [items, org, theme, bank] = await Promise.all([
       this.reads.items(orgUID, transUID),
       this.orgInfo.get(orgUID),
       this.lookups.printTheme(orgUID, moduleUID),
       this.lookups.printBankAccount(orgUID),
     ]);
-    const size = PdfRendererService.paperFormat(paperSize);
-    const html = (await this.renderA4(orgUID, moduleUID, header, items, org ?? {}, theme ?? {}, bank))
-      .replace(/__COPY_LABEL__/g, "ORIGINAL FOR RECIPIENT")
-      .replace("</head>", "<style>body{padding:0!important;margin:0!important;}.print-content{margin:0!important;}#trans-type-header td{border-left:none!important;border-right:none!important;}</style></head>")
-      .replace(/@page\s*\{[^}]*\}/g, `@page{size:${size};margin:10mm 5mm;}`);
-    const bytes = await this.pdfRenderer.render(html, { paperSize: size, margin: { top: "10mm", bottom: "10mm", left: "5mm", right: "5mm" } });
-    return { header, bytes };
+    return this.renderA4(orgUID, moduleUID, header, items, org ?? {}, theme ?? {}, bank);
   }
 
   // _renderA4Html — the organisation's template for the module, or the built-in layout without one

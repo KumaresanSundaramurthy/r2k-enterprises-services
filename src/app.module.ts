@@ -48,6 +48,7 @@ import { UserPreferencesModule } from "./modules/user-preferences/user-preferenc
 import { AssistantModule } from "./modules/assistant/assistant.module";
 import { BarcodeConfigModule } from "./modules/barcode-config/barcode-config.module";
 import { AccountingModule } from "./modules/accounting/accounting.module";
+import { DocModule } from "./modules/doc/doc.module";
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { AccountingModule } from "./modules/accounting/accounting.module";
     AssistantModule,
     BarcodeConfigModule,
     AccountingModule,
+    DocModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

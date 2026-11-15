@@ -311,6 +311,15 @@ export class TransactionsRepository extends BaseRepository {
     return row ? Number(row.TransUID) : 0;
   }
 
+  // getTransactionStubByToken — the shared document behind a public /doc link (any organisation and module)
+  async stubByToken(token: string): Promise<Row | null> {
+    const row = await this.read(TRANSACTIONS)
+      .select("TransUID", "OrgUID", "ModuleUID", "DocStatus", "TransType", "UniqueNumber", "NetAmount", "PaidAmount", "BalanceAmount", "PartyType")
+      .where({ TransToken: token, IsDeleted: 0, IsActive: 1 })
+      .first();
+    return row ?? null;
+  }
+
   // getReturnedQtyMapForItems — quantity already returned per source line (a return being edited left out)
   async returnedQuantities(orgUID: number, transProdUIDs: number[], excludeTransUID = 0): Promise<Map<number, number>> {
     if (transProdUIDs.length === 0) return new Map();
