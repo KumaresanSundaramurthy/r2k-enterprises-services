@@ -29,6 +29,23 @@ const WATERMARK = ".r2k-watermark{position:fixed;top:50%;left:50%;transform:tran
 const e = (value: unknown) => escapeHtml(String(value ?? ""));
 const s = (value: unknown) => String(value ?? "");
 const n = (value: unknown) => Number(value ?? 0) || 0;
+
+/*
+ * Fetches an image URL and returns it as a data: URI so Chrome has nothing external to load.
+ * Returns the original URL on any fetch error so the PDF still renders (possibly without the image).
+ */
+async function inlineImageUrl(url: string): Promise<string> {
+  if (!url || url.startsWith("data:")) return url;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return url;
+    const contentType = res.headers.get("content-type") || "image/png";
+    const buf = await res.arrayBuffer();
+    return `data:${contentType};base64,${Buffer.from(buf).toString("base64")}`;
+  } catch {
+    return url;
+  }
+}
 // PHP number_format($v, $dec, '.', '') — smartDecimal($v, 2, true)
 const fixed = (value: number, decimals = 2) => phpRound(value, decimals).toFixed(decimals);
 // PHP number_format($v, $dec) — with thousands separators
@@ -132,7 +149,11 @@ export class TransactionPrintService {
 
   // _renderA4Html — the organisation's template for the module, or the built-in layout without one
   private async renderA4(orgUID: number, moduleUID: number, h: Row, items: Row[], org: Row, theme: Row, bank: Row | null): Promise<string> {
-    const [settings, txSettings] = await Promise.all([this.orgSettings.get(orgUID), this.lookups.settings(orgUID)]);
+    const [settings, txSettings, orgLogoDataUri] = await Promise.all([
+      this.orgSettings.get(orgUID),
+      this.lookups.settings(orgUID),
+      org.Logo ? inlineImageUrl(s(org.Logo)) : Promise.resolve(""),
+    ]);
     const ctx: PrintContext = { currency: `${txSettings.currency} `, printDateFormat: txSettings.printDateFormat, timezone: settings.Timezone };
     const template = s(theme.TemplateHtmlContent);
     if (!template) return TransactionPrintService.genericA4(h, items, org, ctx);
@@ -218,7 +239,7 @@ export class TransactionPrintService {
       "{{FONT_FAMILY}}": s(theme.FontFamily ?? "Arial"),
       "{{FONT_SIZE_PX}}": `${theme.FontSizePx ?? 11}px`,
       "{{FONT_SIZE}}": `${theme.FontSizePx ?? 11}px`,
-      "{{ORG_LOGO}}": org.Logo ? `<img src="${e(org.Logo)}" style="max-width:100px;max-height:100px;" alt="Logo">` : "",
+      "{{ORG_LOGO}}": orgLogoDataUri ? `<img src="${orgLogoDataUri}" style="max-width:100px;max-height:100px;" alt="Logo">` : "",
       "{{ORG_NAME}}": e(orgName),
       "{{ORG_GSTIN}}": e(org.GSTIN),
       "{{ORG_ADDRESS_1}}": e(org.Line1),
