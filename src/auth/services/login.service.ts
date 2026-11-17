@@ -205,7 +205,7 @@ export class LoginService {
     };
   }
 
-  // Lockout, Google-only, missing password, portal expiry and org email checks from Login::validateUsername.
+  // Lockout, missing password, portal expiry and org email checks from Login::validateUsername.
   private assertCanSignIn(user: {
     isLocked: string | null;
     authProvider: string | null;
@@ -217,14 +217,10 @@ export class LoginService {
     if (phpBool(user.isLocked)) {
       throw new ForbiddenException("Account is locked. Contact your administrator.");
     }
-    if ((user.authProvider ?? "local") === "google") {
-      throw new BadRequestException({
-        message: "This account was created with Google. Please use Continue with Google to sign in.",
-        googleOnly: true,
-      });
-    }
+    // Google sign-up accounts can also sign in with a password once one is set (through Forgot Password);
+    // until then the user is told to set one instead of being sent to Google.
     if (!user.password) {
-      throw new BadRequestException("No password has been set for this account. Please use Forgot Password to set one.");
+      throw new BadRequestException("This user has not set password, kindly use the forget password method to update the password.");
     }
     const expiry = parseDateTime(user.loginExpiry);
     if (expiry && expiry.getTime() < Date.now()) {
