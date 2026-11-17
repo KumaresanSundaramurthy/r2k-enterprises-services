@@ -108,6 +108,30 @@ export class OrganisationRepository extends BaseRepository {
       .orderBy("a.OrgAddressUID", "asc");
   }
 
+  // getOrgVerificationStatus — IsEmailVerified + EmailAddress for the org (used by Oauth during login)
+  async verificationStatus(orgUID: number): Promise<Row | null> {
+    const row = await this.read("Organisation.OrganisationTbl").select("IsEmailVerified", "EmailAddress").where({ OrgUID: orgUID }).first();
+    return (row as Row | undefined) ?? null;
+  }
+
+  // getOrgShortCode — the org's 3-character short code for onboarding prefill
+  async shortCode(orgUID: number): Promise<string> {
+    const row = await this.read("Organisation.OrganisationTbl").select("ShortCode").where({ OrgUID: orgUID }).first();
+    return String(row?.ShortCode ?? "");
+  }
+
+  // checkOrgMobileExists — true when any OTHER org already uses this mobile number
+  async mobileExists(mobile: string, excludeOrgUID: number): Promise<boolean> {
+    const row = await this.read("Organisation.OrganisationTbl").count("* as cnt").where({ MobileNumber: mobile, IsDeleted: 0 }).whereNot({ OrgUID: excludeOrgUID }).first();
+    return Number((row as Row | undefined)?.cnt ?? 0) > 0;
+  }
+
+  // checkOrgGSTINExists — true when any OTHER org already uses this GSTIN
+  async gstinExists(gstin: string, excludeOrgUID: number): Promise<boolean> {
+    const row = await this.read("Organisation.OrganisationTbl").count("* as cnt").where({ GSTIN: gstin, IsDeleted: 0 }).whereNot({ OrgUID: excludeOrgUID }).first();
+    return Number((row as Row | undefined)?.cnt ?? 0) > 0;
+  }
+
   async updateOrganisation(orgUID: number, data: Row): Promise<void> {
     await this.db.write("Organisation.OrganisationTbl").where({ OrgUID: orgUID }).update(data);
   }

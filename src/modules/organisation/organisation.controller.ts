@@ -1,6 +1,8 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, UploadedFiles, UseFilters, UseGuards, UseInterceptors } from "@nestjs/common";
+
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from "@nestjs/swagger";
+import { Allow } from "class-validator";
 import { Request } from "express";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { OrgContextDto } from "../../core/dto/org-context.dto";
@@ -12,6 +14,14 @@ import { AcceptForm, FileFields } from "../products/product-files";
 import { OrganisationFormDto, ShipAddressDto, ShipAddressUpdateDto, VerifyDevPasswordDto } from "./dto/organisation.dto";
 import { OrganisationWriteService } from "./organisation-write.service";
 import { OrganisationService } from "./organisation.service";
+
+class OrgMobileCheckDto extends OrgContextDto {
+  @ApiProperty({ description: "10-digit mobile number to check for uniqueness" }) @Allow() mobile?: string;
+}
+
+class OrgGstinCheckDto extends OrgContextDto {
+  @ApiPropertyOptional({ description: "GSTIN to check for uniqueness" }) @Allow() gstin?: string;
+}
 
 /* Public (no JWT guard) — CI3 calls this server-to-server from both authenticated pages
    and public pages (Doc, Pay, Receipt, Razorpay, Oauth) that have no user JWT cookie.
@@ -35,6 +45,30 @@ export class OrganisationPublicController {
   @ApiOperation({ summary: "Shipping dispatch addresses for transaction forms (Redis-cached)" })
   async getDispatchAddresses(@Query() dto: OrgContextDto) {
     return ciSuccess(await this.organisation.getDispatchAddresses(dto.orgId));
+  }
+
+  @Get("getOrgVerificationStatus")
+  @ApiOperation({ summary: "IsEmailVerified + EmailAddress for the org — used by Oauth during login" })
+  async getOrgVerificationStatus(@Query() dto: OrgContextDto) {
+    return ciSuccess(await this.organisation.getVerificationStatus(dto.orgId) ?? {});
+  }
+
+  @Get("getOrgShortCode")
+  @ApiOperation({ summary: "The org's 3-character short code (ShortCode) — used by Onboarding prefill" })
+  async getOrgShortCode(@Query() dto: OrgContextDto) {
+    return ciSuccess(await this.organisation.getShortCode(dto.orgId));
+  }
+
+  @Get("checkOrgMobileExists")
+  @ApiOperation({ summary: "Returns {Exists: bool} — true when another org already uses this mobile number" })
+  async checkOrgMobileExists(@Query() dto: OrgMobileCheckDto) {
+    return ciSuccess(await this.organisation.checkMobileExists(String(dto.mobile ?? ""), dto.orgId));
+  }
+
+  @Get("checkOrgGSTINExists")
+  @ApiOperation({ summary: "Returns {Exists: bool} — true when another org already uses this GSTIN" })
+  async checkOrgGSTINExists(@Query() dto: OrgGstinCheckDto) {
+    return ciSuccess(await this.organisation.checkGstinExists(String(dto.gstin ?? ""), dto.orgId));
   }
 }
 

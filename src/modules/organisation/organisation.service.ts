@@ -50,6 +50,26 @@ export class OrganisationService {
     return addresses;
   }
 
+  // getOrgVerificationStatus — used by Oauth during login to gate unverified org emails
+  async getVerificationStatus(orgUID: number) {
+    return await this.repo.verificationStatus(orgUID);
+  }
+
+  // getOrgShortCode — used by Onboarding page render to prefill the short-code field
+  async getShortCode(orgUID: number): Promise<{ ShortCode: string }> {
+    return { ShortCode: await this.repo.shortCode(orgUID) };
+  }
+
+  // checkOrgMobileExists — used by Onboarding::completeProfile to reject duplicates
+  async checkMobileExists(mobile: string, excludeOrgUID: number): Promise<{ Exists: boolean }> {
+    return { Exists: await this.repo.mobileExists(mobile, excludeOrgUID) };
+  }
+
+  // checkOrgGSTINExists — used by Onboarding::completeProfile to reject duplicates
+  async checkGstinExists(gstin: string, excludeOrgUID: number): Promise<{ Exists: boolean }> {
+    return { Exists: await this.repo.gstinExists(gstin, excludeOrgUID) };
+  }
+
   // CI3 mapOrganisationAddress($row, 'B', 'Billing') — null when there is no billing address
   static billingAddress(org: Row): Row | null {
     if (!org.BAddressUID) return null;

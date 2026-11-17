@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res, StreamableFile, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
-import { Request } from "express";
+import { Request, Response } from "express";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { OrgContextDto } from "../../core/dto/org-context.dto";
 import { writeContext } from "../../core/request/write-context";
@@ -24,6 +24,7 @@ import {
   TransAttachmentsDto,
   TransBulkDeleteDto,
   TransDetailDto,
+  TransDownloadPdfDto,
   TransListDto,
 } from "./transactions.dto";
 
@@ -85,6 +86,19 @@ export class TransactionsController {
   })
   async getTransactionDetail(@Query() dto: TransDetailDto) {
     return ciSuccess(await this.print.detail(dto.orgId, postInt(dto, "TransUID"), postInt(dto, "ModuleUID"), String(dto.PrintType || "a4")));
+  }
+
+  @Get("downloadPdf/:transUID")
+  @ApiParam({ name: "transUID", type: Number })
+  @ApiOperation({ summary: "Download a transaction A4 print as PDF (application/pdf attachment)" })
+  async downloadPdf(@Param("transUID") transUID: string, @Query() dto: TransDownloadPdfDto, @Res({ passthrough: true }) res: Response): Promise<StreamableFile> {
+    const uid = Number(transUID) || 0;
+    const paperSize = String(dto.paperSize || "A4").toUpperCase();
+    const result = await this.print.pdf(dto.orgId, uid, postInt(dto, "ModuleUID"), paperSize);
+    if (!result) throw new CiValidationError("Transaction not found.");
+    const filename = `${String(result.header.UniqueNumber || `Trans_${uid}`).replace(/[^a-zA-Z0-9_\-\.]/g, "_")}.pdf`;
+    res.set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "private, max-age=0, must-revalidate" });
+    return new StreamableFile(result.bytes);
   }
 
   @Get("getAttachments")

@@ -50,6 +50,7 @@ import { BarcodeConfigModule } from "./modules/barcode-config/barcode-config.mod
 import { AccountingModule } from "./modules/accounting/accounting.module";
 import { DocModule } from "./modules/doc/doc.module";
 import { ReportsModule } from "./modules/reports/reports.module";
+import { TodosModule } from "./modules/todos/todos.module";
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { ReportsModule } from "./modules/reports/reports.module";
     AccountingModule,
     DocModule,
     ReportsModule,
+    TodosModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

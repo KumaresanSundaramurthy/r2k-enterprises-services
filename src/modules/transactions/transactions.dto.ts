@@ -72,6 +72,11 @@ export class ProductSearchDto extends OrgLangContextDto {
   @ApiPropertyOptional({ type: Number, description: "Category filter" }) @Allow() categuid?: string | number;
 }
 
+export class TransDownloadPdfDto extends OrgContextDto {
+  @ApiProperty({ type: Number, example: 101 }) @Allow() ModuleUID?: string | number;
+  @ApiPropertyOptional({ enum: ["A4", "A5", "Letter"], default: "A4" }) @Allow() paperSize?: string;
+}
+
 export class PrefixSaveDto extends OrgUserBranchContextDto {
   @ApiPropertyOptional({ type: Number, description: "Update / delete / set default: the prefix" }) @Allow() prePrefixUID?: string | number;
   @ApiPropertyOptional({ type: Number, description: "Add: the module (101 Quotation, 102 Sales Order, …)" }) @Allow() preModuleUID?: string | number;
