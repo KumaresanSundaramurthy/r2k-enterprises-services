@@ -51,6 +51,7 @@ import { AccountingModule } from "./modules/accounting/accounting.module";
 import { DocModule } from "./modules/doc/doc.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { TodosModule } from "./modules/todos/todos.module";
+import { BillingModule } from "./modules/billing/billing.module";
 
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { TodosModule } from "./modules/todos/todos.module";
     DocModule,
     ReportsModule,
     TodosModule,
+    BillingModule,
     AuthModule,
     ShopAuthModule,
     ProductsModule,

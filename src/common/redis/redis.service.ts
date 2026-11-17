@@ -28,17 +28,20 @@ export class RedisService implements OnModuleDestroy {
     await this.client.quit().catch(() => undefined);
   }
 
-  // S for local/dev/staging, P for production — mirrors CI3's ENVIRONMENT (CI_ENV, default production).
+  /* "" for production (clean keys, no env segment), "S" for dev/staging — mirrors CI3's envFlag(). */
   private envFlag(): string {
-    return (process.env.CI_ENV || "production") === "production" ? "P" : "S";
+    return (process.env.CI_ENV || "production") === "production" ? "" : "S";
   }
 
   envKey(key: string): string {
-    return `${this.envFlag()}-${key}`;
+    const f = this.envFlag();
+    return f ? `${f}-${key}` : key;
   }
 
   orgKey(type: string, orgToken: string): string {
-    return orgToken ? `${orgToken.toLowerCase()}-${this.envFlag()}-${type}` : type;
+    if (!orgToken) return type;
+    const f = this.envFlag();
+    return f ? `${orgToken.toLowerCase()}-${f}-${type}` : `${orgToken.toLowerCase()}-${type}`;
   }
 
   globalKey(type: string): string {
@@ -46,7 +49,9 @@ export class RedisService implements OnModuleDestroy {
   }
 
   userKey(type: string, userUID: number | string, orgToken: string): string {
-    return orgToken ? `${orgToken.toLowerCase()}-${this.envFlag()}-${type}-${userUID}` : `${type}-${userUID}`;
+    if (!orgToken) return `${type}-${userUID}`;
+    const f = this.envFlag();
+    return f ? `${orgToken.toLowerCase()}-${f}-${type}-${userUID}` : `${orgToken.toLowerCase()}-${type}-${userUID}`;
   }
 
   async get<T = unknown>(key: string): Promise<T | null> {
