@@ -8,6 +8,7 @@ import { ErpUserRepository } from "../repositories/erp-user.repository";
 import { SecurityRepository } from "../repositories/security.repository";
 import { passwordChangedEmail, passwordResetEmail } from "../emails/auth-emails";
 import { appUrl } from "../utils/app-url";
+import { TelegramNotifier } from "../../libraries/telegram/telegram-notifier";
 import { AuthTokenService } from "./auth-token.service";
 import { SessionService } from "./session.service";
 
@@ -63,9 +64,14 @@ export class PasswordService {
     const base = appBaseUrl ? appBaseUrl.replace(/\/+$/, "") : appUrl("").replace(/\/+$/, "");
     const resetLink = `${base}/reset-password/${token}`;
     const content = passwordResetEmail(user.FirstName ?? "User", resetLink);
+    const mailContext = { User: `#${user.UserUID}`, Email: user.EmailAddress, IP: ipAddress };
     await this.mail
       .send(user.EmailAddress, user.FirstName ?? "User", content.subject, content.html)
-      .catch((err) => this.logger.error(`Reset email to user ${user.UserUID} failed: ${(err as Error).message}`));
+      .then(() => TelegramNotifier.alert("[FORGOT-PASSWORD] Reset email sent", mailContext))
+      .catch((err) => {
+        this.logger.error(`Reset email to user ${user.UserUID} failed: ${(err as Error).message}`);
+        TelegramNotifier.error("[FORGOT-PASSWORD] Reset email failed", err, mailContext);
+      });
     return { message: "Password reset link has been sent to your inbox. It expires in 15 minutes." };
   }
 
@@ -105,7 +111,11 @@ export class PasswordService {
       const content = passwordChangedEmail(reset.FirstName ?? "User", appUrl("login"));
       await this.mail
         .send(reset.EmailAddress, reset.FirstName ?? "User", content.subject, content.html)
-        .catch((err) => this.logger.error(`Password-changed email to user ${userUID} failed: ${(err as Error).message}`));
+        .then(() => TelegramNotifier.alert("[RESET-PASSWORD] Password changed email sent", { User: `#${userUID}`, Email: reset.EmailAddress }))
+        .catch((err) => {
+          this.logger.error(`Password-changed email to user ${userUID} failed: ${(err as Error).message}`);
+          TelegramNotifier.error("[RESET-PASSWORD] Password changed email failed", err, { User: `#${userUID}`, Email: reset.EmailAddress });
+        });
     }
     return { message: "Password updated successfully. You can now sign in." };
   }
