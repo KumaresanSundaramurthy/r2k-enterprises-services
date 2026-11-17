@@ -46,23 +46,27 @@ export class PasswordService {
     return { message: "Password updated. Please sign in with your new password." };
   }
 
-  // Login::sendResetLink. Always answers the same way so the endpoint cannot be used to discover accounts.
-  async forgot(email: string, ipAddress: string) {
+  // Login::sendResetLink. Returns a specific error when the email is not found so the frontend can show a helpful message.
+  async forgot(email: string, ipAddress: string, appBaseUrl?: string) {
     const user = await this.userRepository.findActiveUserByEmail(email.trim());
-    if (user) {
-      const token = randomBytes(32).toString("hex");
-      await this.securityRepository.createPasswordReset(
-        toInt(user.UserUID),
-        token,
-        nowDateTime(new Date(Date.now() + RESET_TOKEN_TTL_MS)),
-        ipAddress
-      );
-      const content = passwordResetEmail(user.FirstName ?? "User", appUrl(`reset-password/${token}`));
-      await this.mail
-        .send(user.EmailAddress, user.FirstName ?? "User", content.subject, content.html)
-        .catch((err) => this.logger.error(`Reset email to user ${user.UserUID} failed: ${(err as Error).message}`));
+    if (!user) {
+      throw new NotFoundException("No account found with this email address. Please check and try again.");
     }
-    return { message: GENERIC_FORGOT_MESSAGE };
+    const token = randomBytes(32).toString("hex");
+    await this.securityRepository.createPasswordReset(
+      toInt(user.UserUID),
+      token,
+      nowDateTime(new Date(Date.now() + RESET_TOKEN_TTL_MS)),
+      ipAddress
+    );
+    /* Use the base URL the browser sent; fall back to APP_BASE_URL env var, then appUrl() */
+    const base = appBaseUrl ? appBaseUrl.replace(/\/+$/, "") : appUrl("").replace(/\/+$/, "");
+    const resetLink = `${base}/reset-password/${token}`;
+    const content = passwordResetEmail(user.FirstName ?? "User", resetLink);
+    await this.mail
+      .send(user.EmailAddress, user.FirstName ?? "User", content.subject, content.html)
+      .catch((err) => this.logger.error(`Reset email to user ${user.UserUID} failed: ${(err as Error).message}`));
+    return { message: "Password reset link has been sent to your inbox. It expires in 15 minutes." };
   }
 
   // Login::showResetForm — lets the client show the form, or an "expired"/"invalid" state, before submitting.

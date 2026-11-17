@@ -34,7 +34,7 @@ export class PasswordController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Email a password reset link (valid 15 minutes)" })
   forgot(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
-    return this.passwordService.forgot(dto.email, getRequestMeta(req).ipAddress);
+    return this.passwordService.forgot(dto.email, getRequestMeta(req).ipAddress, dto.appBaseUrl);
   }
 
   @Get("reset/:token")

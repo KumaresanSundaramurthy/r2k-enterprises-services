@@ -1,5 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsNotEmpty, IsString } from "class-validator";
+import { IsEmail, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
 export class ForcedPasswordChangeDto {
   @ApiProperty({ description: "changeToken returned by login when nextStep is FORCE_PASSWORD_CHANGE" })
@@ -22,6 +22,11 @@ export class ForgotPasswordDto {
   @ApiProperty({ example: "jane@example.com" })
   @IsEmail({}, { message: "Please enter a valid email address." })
   email!: string;
+
+  @ApiProperty({ example: "http://localhost:8080/app", description: "CI3 app base URL — used to build the reset link in the email", required: false })
+  @IsOptional()
+  @IsString()
+  appBaseUrl?: string;
 }
 
 export class ResetPasswordDto {
