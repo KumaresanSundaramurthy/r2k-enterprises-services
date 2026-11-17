@@ -44,9 +44,11 @@ export class ListExportRenderer {
         const dataMatch = table.orgLogo.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/i);
         if (dataMatch) {
           const ext = dataMatch[1].toLowerCase() === "jpg" ? "jpeg" : (dataMatch[1].toLowerCase() as "png" | "jpeg" | "gif");
-          const imgId = wb.addImage({ buffer: Buffer.from(dataMatch[2], "base64"), extension: ext });
+          // base64 input avoids the Buffer type mismatch between @types/node and exceljs's own Buffer type
+          const imgId = wb.addImage({ base64: dataMatch[2], extension: ext });
           ws.getRow(1).height = 50;
-          ws.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 }, editAs: "oneCell" });
+          // exceljs accepts plain { col, row } anchors at runtime; its Anchor type lists extra internal fields
+          ws.addImage(imgId, { tl: { col: 0, row: 0 } as ExcelJS.Anchor, br: { col: 2, row: 1 } as ExcelJS.Anchor, editAs: "oneCell" });
           dataStartRow = 2; // push header rows down when logo is present
         }
       } catch { /* skip logo on error */ }
