@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { escapeHtml } from "../../common/utils/php-compat";
 
@@ -23,28 +24,37 @@ export class ListExportRenderer {
     return Buffer.from("﻿" + lines.join(""), "utf8");
   }
 
-  // _toExcel — XML Spreadsheet 2003, opens natively in Excel; money columns are numbers
-  static excel(table: ListExportTable): Buffer {
-    const header = table.labels.map((label) => `<Cell ss:StyleID="H"><Data ss:Type="String">${escapeHtml(label)}</Data></Cell>`).join("");
-    const body = table.rows
-      .map(
-        (row) =>
-          "<Row>" +
-          row.map((value, i) => `<Cell><Data ss:Type="${table.money[i] ? "Number" : "String"}">${escapeHtml(value)}</Data></Cell>`).join("") +
-          "</Row>\n"
-      )
-      .join("");
-    const xml =
-      '<?xml version="1.0" encoding="UTF-8"?>\n' +
-      '<?mso-application progid="Excel.Sheet"?>\n' +
-      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
-      '          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
-      '<Styles><Style ss:ID="H"><Font ss:Bold="1"/><Interior ss:Color="#1a73e8" ss:Pattern="Solid"/><Font ss:Color="#FFFFFF" ss:Bold="1"/></Style></Styles>\n' +
-      `<Worksheet ss:Name="${escapeHtml(table.title)}">\n<Table>\n` +
-      `<Row>${header}</Row>\n` +
-      body +
-      "</Table>\n</Worksheet>\n</Workbook>";
-    return Buffer.from(xml, "utf8");
+  // _toExcel — real .xlsx via ExcelJS; header row styled blue/white, money columns right-aligned as numbers
+  static async excel(table: ListExportTable): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(table.title.substring(0, 31));
+
+    ws.addRow(table.labels);
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A73E8" } };
+      cell.alignment = { vertical: "middle" };
+    });
+    headerRow.commit();
+
+    table.rows.forEach((row) => {
+      const values = row.map((value, i) => (table.money[i] ? Number(value) || 0 : value));
+      const excelRow = ws.addRow(values);
+      excelRow.eachCell((cell, colNumber) => {
+        if (table.money[colNumber - 1]) cell.alignment = { horizontal: "right" };
+      });
+    });
+
+    ws.columns.forEach((col, i) => {
+      const maxLen = Math.max(
+        String(table.labels[i] ?? "").length,
+        ...table.rows.slice(0, 500).map((r) => String(r[i] ?? "").length)
+      );
+      col.width = Math.min(Math.max(maxLen + 2, 10), 50);
+    });
+
+    return Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer);
   }
 
   // _buildHtml('print') — centred logo (if set), org name, title line, numbered table; auto-triggers print on load

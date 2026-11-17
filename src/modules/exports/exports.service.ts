@@ -105,7 +105,7 @@ export class ExportsService {
       case "csv":
         return { kind: "file", fileName: fileName("csv"), contentType: "text/csv; charset=UTF-8", body: ListExportRenderer.csv(table) };
       case "excel":
-        return { kind: "file", fileName: fileName("xml"), contentType: "application/vnd.ms-excel", body: ListExportRenderer.excel(table) };
+        return { kind: "file", fileName: fileName("xlsx"), contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: await ListExportRenderer.excel(table) };
       case "pdf":
         return { kind: "file", fileName: fileName("pdf"), contentType: "application/pdf", body: await ListExportRenderer.pdf(table) };
     }
