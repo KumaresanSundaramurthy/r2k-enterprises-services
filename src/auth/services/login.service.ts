@@ -97,10 +97,14 @@ export class LoginService {
     }
 
     const displayName = `${user.FirstName ?? ""} ${user.LastName ?? ""}`.trim() || user.UserName;
+    /* Only send imageUrl when the user actually has an image stored; null tells the client to use the letter avatar */
+    const imageUrl = user.Image ? resolveCdnUrl(user.Image) : null;
+    const avatarLetter = displayName.charAt(0).toUpperCase();
     return {
       username: user.UserName,
       displayName,
-      imageUrl: resolveCdnUrl(user.Image),
+      imageUrl,
+      avatarLetter,
       loginToken: this.tokens.signShortLived({ purpose: "login_step2", uid: toInt(user.UserUID) }, STEP_TWO_TTL_SECONDS),
       loginTokenExpiresIn: STEP_TWO_TTL_SECONDS,
     };
