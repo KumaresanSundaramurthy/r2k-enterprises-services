@@ -92,7 +92,7 @@ export class ExportsService {
       title: config.title,
       orgName: String(header?.Name ?? ""),
       orgLogo,
-      exportedOn: phpDate("d M Y", now, settings.Timezone),
+      exportedOn: phpDate(settings.ListDateTimeFormat ?? (dateFormat + " h:i A"), now, settings.Timezone),
       labels: columns.map((column) => EXPORT_LABELS[column] ?? column),
       rows: rows.map((row) => columns.map((column) => ExportsService.cell(row, column, dateFormat))),
       money: columns.map((column) => MONEY_COLUMNS.has(column)),
