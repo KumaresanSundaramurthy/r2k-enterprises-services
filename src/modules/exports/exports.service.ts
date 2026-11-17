@@ -84,7 +84,7 @@ export class ExportsService {
     const rows = this.withComputedColumns(request.moduleUID, await this.fetchRows(request, langCode));
 
     const logoUrl = String(header?.Logo ?? "");
-    const orgLogo = (format === "print" || format === "pdf") && logoUrl ? await ExportsService.inlineImage(logoUrl) : undefined;
+    const orgLogo = (format === "print" || format === "pdf" || format === "excel") && logoUrl ? await ExportsService.inlineImage(logoUrl) : undefined;
 
     const columns = config.formats[format];
     const now = new Date();

@@ -18,40 +18,85 @@ const csvField = (value: string) => (/[",\\\s]/.test(value) ? `"${value.replace(
 
 /** CI3 TransactionExporter output formats: CSV, Excel 2003 XML (.xls), PDF and the printable page. */
 export class ListExportRenderer {
-  // _toCsv — UTF-8 BOM + header line + one line per row; BOM tells Excel to open as UTF-8 (prevents â€" garbling)
+  // _toCsv — UTF-8 BOM + company header rows + data; BOM tells Excel to open as UTF-8
   static csv(table: ListExportTable): Buffer {
-    const lines = [table.labels, ...table.rows].map((fields) => fields.map(csvField).join(",") + "\n");
-    return Buffer.from("﻿" + lines.join(""), "utf8");
+    const header = [
+      csvField(table.orgName),
+      `${csvField(table.title)} | Exported: ${csvField(table.exportedOn)} | ${table.rows.length} records`,
+      "",
+    ].join("\n") + "\n";
+    const data = [["#", ...table.labels], ...table.rows.map((row, i) => [String(i + 1), ...row])]
+      .map((fields) => fields.map(csvField).join(",") + "\n")
+      .join("");
+    return Buffer.from("﻿" + header + data, "utf8");
   }
 
-  // _toExcel — real .xlsx via ExcelJS; header row styled blue/white, money columns right-aligned as numbers
+  // _toExcel — real .xlsx via ExcelJS: logo + company header rows, then blue column headers + data
   static async excel(table: ListExportTable): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
+    const totalCols = table.labels.length + 1; // +1 for the # column
     const ws = wb.addWorksheet(table.title.substring(0, 31));
 
-    ws.addRow(table.labels);
-    const headerRow = ws.getRow(1);
-    headerRow.eachCell((cell) => {
+    /* ── Logo row ──────────────────────────────────────────────────────── */
+    let dataStartRow = 1;
+    if (table.orgLogo) {
+      try {
+        const dataMatch = table.orgLogo.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/i);
+        if (dataMatch) {
+          const ext = dataMatch[1].toLowerCase() === "jpg" ? "jpeg" : (dataMatch[1].toLowerCase() as "png" | "jpeg" | "gif");
+          const imgId = wb.addImage({ buffer: Buffer.from(dataMatch[2], "base64"), extension: ext });
+          ws.getRow(1).height = 50;
+          ws.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 }, editAs: "oneCell" });
+          dataStartRow = 2; // push header rows down when logo is present
+        }
+      } catch { /* skip logo on error */ }
+    }
+
+    /* ── Org name row ──────────────────────────────────────────────────── */
+    const nameRow = ws.getRow(dataStartRow);
+    nameRow.getCell(1).value = table.orgName;
+    nameRow.getCell(1).font = { bold: true, size: 13 };
+    ws.mergeCells(dataStartRow, 1, dataStartRow, totalCols);
+    nameRow.height = 20;
+    nameRow.commit();
+
+    /* ── Subtitle row ──────────────────────────────────────────────────── */
+    const subRow = ws.getRow(dataStartRow + 1);
+    subRow.getCell(1).value = `${table.title}  |  Exported: ${table.exportedOn}  |  ${table.rows.length} records`;
+    subRow.getCell(1).font = { size: 9, color: { argb: "FF555555" } };
+    ws.mergeCells(dataStartRow + 1, 1, dataStartRow + 1, totalCols);
+    subRow.height = 15;
+    subRow.commit();
+
+    /* ── Empty spacer row ──────────────────────────────────────────────── */
+    ws.getRow(dataStartRow + 2).height = 6;
+
+    /* ── Column header row ─────────────────────────────────────────────── */
+    const colHeaderRow = ws.getRow(dataStartRow + 3);
+    ["#", ...table.labels].forEach((label, i) => {
+      const cell = colHeaderRow.getCell(i + 1);
+      cell.value = label;
       cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A73E8" } };
-      cell.alignment = { vertical: "middle" };
+      cell.alignment = { vertical: "middle", horizontal: i === 0 ? "center" : "left" };
     });
-    headerRow.commit();
+    colHeaderRow.height = 18;
+    colHeaderRow.commit();
 
-    table.rows.forEach((row) => {
-      const values = row.map((value, i) => (table.money[i] ? Number(value) || 0 : value));
-      const excelRow = ws.addRow(values);
-      excelRow.eachCell((cell, colNumber) => {
-        if (table.money[colNumber - 1]) cell.alignment = { horizontal: "right" };
+    /* ── Data rows ─────────────────────────────────────────────────────── */
+    table.rows.forEach((row, idx) => {
+      const dataRow = ws.addRow([String(idx + 1), ...row.map((v, i) => (table.money[i] ? Number(v) || 0 : v))]);
+      dataRow.eachCell((cell, colNum) => {
+        if (colNum === 1) { cell.alignment = { horizontal: "center" }; cell.font = { color: { argb: "FF999999" } }; }
+        else if (table.money[colNum - 2]) cell.alignment = { horizontal: "right" };
       });
     });
 
-    ws.columns.forEach((col, i) => {
-      const maxLen = Math.max(
-        String(table.labels[i] ?? "").length,
-        ...table.rows.slice(0, 500).map((r) => String(r[i] ?? "").length)
-      );
-      col.width = Math.min(Math.max(maxLen + 2, 10), 50);
+    /* ── Column widths ─────────────────────────────────────────────────── */
+    ws.getColumn(1).width = 6; // # column
+    table.labels.forEach((label, i) => {
+      const maxLen = Math.max(label.length, ...table.rows.slice(0, 500).map((r) => String(r[i] ?? "").length));
+      ws.getColumn(i + 2).width = Math.min(Math.max(maxLen + 2, 10), 50);
     });
 
     return Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer);
