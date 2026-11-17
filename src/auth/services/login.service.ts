@@ -210,9 +210,10 @@ export class LoginService {
       throw new ForbiddenException("Account is locked. Contact your administrator.");
     }
     if ((user.authProvider ?? "local") === "google") {
-      throw new BadRequestException(
-        "This account was created with Google. Please use Continue with Google to sign in."
-      );
+      throw new BadRequestException({
+        message: "This account was created with Google. Please use Continue with Google to sign in.",
+        googleOnly: true,
+      });
     }
     if (!user.password) {
       throw new BadRequestException("No password has been set for this account. Please use Forgot Password to set one.");
