@@ -73,7 +73,7 @@ export class ProductSearchDto extends OrgLangContextDto {
 }
 
 export class TransDownloadPdfDto extends OrgContextDto {
-  @ApiProperty({ type: Number, example: 101 }) @Allow() ModuleUID?: string | number;
+  @ApiProperty({ type: Number, example: 101 }) @Allow() moduleUID?: string | number;
   @ApiPropertyOptional({ enum: ["A4", "A5", "Letter"], default: "A4" }) @Allow() paperSize?: string;
 }
 

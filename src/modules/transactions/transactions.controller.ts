@@ -94,7 +94,7 @@ export class TransactionsController {
   async downloadPdf(@Param("transUID") transUID: string, @Query() dto: TransDownloadPdfDto, @Res({ passthrough: true }) res: Response): Promise<StreamableFile> {
     const uid = Number(transUID) || 0;
     const paperSize = String(dto.paperSize || "A4").toUpperCase();
-    const result = await this.print.pdf(dto.orgId, uid, postInt(dto, "ModuleUID"), paperSize);
+    const result = await this.print.pdf(dto.orgId, uid, postInt(dto, "moduleUID"), paperSize);
     if (!result) throw new CiValidationError("Transaction not found.");
     const filename = `${String(result.header.UniqueNumber || `Trans_${uid}`).replace(/[^a-zA-Z0-9_\-\.]/g, "_")}.pdf`;
     res.set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "private, max-age=0, must-revalidate" });
