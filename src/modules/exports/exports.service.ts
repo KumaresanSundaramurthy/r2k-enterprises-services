@@ -84,7 +84,7 @@ export class ExportsService {
     const rows = this.withComputedColumns(request.moduleUID, await this.fetchRows(request, langCode));
 
     const logoUrl = String(header?.Logo ?? "");
-    const orgLogo = format === "print" && logoUrl ? await ExportsService.inlineImage(logoUrl) : undefined;
+    const orgLogo = (format === "print" || format === "pdf") && logoUrl ? await ExportsService.inlineImage(logoUrl) : undefined;
 
     const columns = config.formats[format];
     const now = new Date();
@@ -105,7 +105,7 @@ export class ExportsService {
       case "csv":
         return { kind: "file", fileName: fileName("csv"), contentType: "text/csv; charset=UTF-8", body: ListExportRenderer.csv(table) };
       case "excel":
-        return { kind: "file", fileName: fileName("xls"), contentType: "application/vnd.ms-excel", body: ListExportRenderer.excel(table) };
+        return { kind: "file", fileName: fileName("xml"), contentType: "application/vnd.ms-excel", body: ListExportRenderer.excel(table) };
       case "pdf":
         return { kind: "file", fileName: fileName("pdf"), contentType: "application/pdf", body: await ListExportRenderer.pdf(table) };
     }
