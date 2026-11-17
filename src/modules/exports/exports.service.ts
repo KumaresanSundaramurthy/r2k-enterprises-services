@@ -97,7 +97,7 @@ export class ExportsService {
       rows: rows.map((row) => columns.map((column) => ExportsService.cell(row, column, dateFormat))),
       money: columns.map((column) => MONEY_COLUMNS.has(column)),
     };
-    const fileName = (ext: string) => `${config.title}_${phpDate("Y-m-d", now, settings.Timezone)}.${ext}`;
+    const fileName = (ext: string) => `${config.title}_${now.getTime()}.${ext}`;
 
     switch (format) {
       case "print":

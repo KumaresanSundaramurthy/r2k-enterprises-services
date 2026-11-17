@@ -17,10 +17,10 @@ const csvField = (value: string) => (/[",\\\s]/.test(value) ? `"${value.replace(
 
 /** CI3 TransactionExporter output formats: CSV, Excel 2003 XML (.xls), PDF and the printable page. */
 export class ListExportRenderer {
-  // _toCsv — header line, then one line per row
+  // _toCsv — UTF-8 BOM + header line + one line per row; BOM tells Excel to open as UTF-8 (prevents â€" garbling)
   static csv(table: ListExportTable): Buffer {
     const lines = [table.labels, ...table.rows].map((fields) => fields.map(csvField).join(",") + "\n");
-    return Buffer.from(lines.join(""), "utf8");
+    return Buffer.from("﻿" + lines.join(""), "utf8");
   }
 
   // _toExcel — XML Spreadsheet 2003, opens natively in Excel; money columns are numbers
@@ -36,6 +36,7 @@ export class ListExportRenderer {
       .join("");
     const xml =
       '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<?mso-application progid="Excel.Sheet"?>\n' +
       '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n' +
       '          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
       '<Styles><Style ss:ID="H"><Font ss:Bold="1"/><Interior ss:Color="#1a73e8" ss:Pattern="Solid"/><Font ss:Color="#FFFFFF" ss:Bold="1"/></Style></Styles>\n' +
@@ -79,7 +80,7 @@ export class ListExportRenderer {
   }
 
   // _toPdf — the same table on A4 landscape (CI3 rendered the HTML with Dompdf)
-  static pdf(table: ListExportTable): Promise<Buffer> {
+  static async pdf(table: ListExportTable): Promise<Buffer> {
     const margin = 28;
     const doc = new PDFDocument({ size: "A4", layout: "landscape", margin, info: { Title: table.title } });
     const chunks: Buffer[] = [];
@@ -96,9 +97,23 @@ export class ListExportRenderer {
     const widths = ListExportRenderer.columnWidths(table, width - snoWidth, fontSize, doc);
     const bottom = () => doc.page.height - margin;
 
-    doc.font("Helvetica-Bold").fontSize(11).fillColor("#222222").text(table.orgName, margin, margin);
-    doc.font("Helvetica").fontSize(8).fillColor("#555555").text(`${table.title}  |  Exported: ${table.exportedOn}  |  ${table.rows.length} records`);
-    let y = doc.y + 6;
+    /* Centred header: logo (if set) → org name → subtitle */
+    let headerY = margin;
+    if (table.orgLogo) {
+      try {
+        const dataMatch = table.orgLogo.match(/^data:([^;]+);base64,(.+)$/);
+        const imgBuf = dataMatch ? Buffer.from(dataMatch[2], "base64") : await fetch(table.orgLogo).then((r) => r.arrayBuffer()).then((b) => Buffer.from(b));
+        const logoMaxH = 36;
+        const logoMaxW = 120;
+        doc.image(imgBuf, margin + (width - logoMaxW) / 2, headerY, { fit: [logoMaxW, logoMaxH], align: "center" });
+        headerY += logoMaxH + 4;
+      } catch {
+        /* skip logo on error */
+      }
+    }
+    doc.font("Helvetica-Bold").fontSize(11).fillColor("#222222").text(table.orgName, margin, headerY, { width, align: "center" });
+    doc.font("Helvetica").fontSize(8).fillColor("#555555").text(`${table.title}  |  Exported: ${table.exportedOn}  |  ${table.rows.length} records`, margin, doc.y + 2, { width, align: "center" });
+    let y = doc.y + 8;
 
     const drawRow = (cells: string[], header: boolean, shade: boolean) => {
       doc.font(header ? "Helvetica-Bold" : "Helvetica").fontSize(fontSize);
