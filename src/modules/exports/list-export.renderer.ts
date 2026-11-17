@@ -5,6 +5,7 @@ import { escapeHtml } from "../../common/utils/php-compat";
 export interface ListExportTable {
   title: string;
   orgName: string;
+  orgLogo?: string; // base64 data URI or CDN URL; shown centered in the print header
   exportedOn: string; // d M Y
   labels: string[];
   rows: string[][];
@@ -45,31 +46,36 @@ export class ListExportRenderer {
     return Buffer.from(xml, "utf8");
   }
 
-  // _buildHtml('print') — org name, title line, numbered table and a print button
+  // _buildHtml('print') — centred logo (if set), org name, title line, numbered table; auto-triggers print on load
   static printHtml(table: ListExportTable): string {
+    const logoHtml = table.orgLogo
+      ? `<div class="logo"><img src="${table.orgLogo}" alt="${escapeHtml(table.orgName)}"></div>`
+      : "";
     let html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
     html += `<title>${escapeHtml(table.title)}</title><style>`;
     html += "body{font-family:Arial,sans-serif;font-size:10px;margin:16px;color:#222;}";
-    html += ".org{font-size:13px;font-weight:bold;margin-bottom:2px;}";
-    html += ".sub{font-size:9px;color:#555;margin-bottom:10px;}";
-    html += "table{width:100%;border-collapse:collapse;margin-top:6px;}";
+    html += ".hdr{text-align:center;margin-bottom:10px;}";
+    html += ".logo img{max-height:60px;max-width:180px;display:block;margin:0 auto 6px;}";
+    html += ".org{font-size:13px;font-weight:bold;}";
+    html += ".sub{font-size:9px;color:#555;margin-top:3px;}";
+    html += "table{width:100%;border-collapse:collapse;margin-top:10px;}";
     html += "th{background:#1a73e8;color:#fff;padding:5px 7px;text-align:left;font-size:9px;white-space:nowrap;}";
     html += "td{padding:4px 7px;border-bottom:1px solid #e8e8e8;font-size:9px;}";
     html += "tr:nth-child(even) td{background:#f4f8ff;}";
-    html += ".num{text-align:right;}";
-    html += ".sno{color:#999;text-align:center;}";
-    html += ".pbtn{margin-bottom:10px;} @media print{.pbtn{display:none;} @page{size:A4 landscape;margin:10mm;}}";
+    html += ".num{text-align:right;}.sno{color:#999;text-align:center;}";
+    html += "@media print{@page{size:A4 landscape;margin:10mm;}}";
     html += "</style></head><body>";
-    html += '<div class="pbtn"><button onclick="window.print()" style="padding:5px 14px;cursor:pointer;">🖨 Print</button></div>';
-    html += `<div class="org">${escapeHtml(table.orgName)}</div>`;
-    html += `<div class="sub">${escapeHtml(table.title)} &nbsp;|&nbsp; Exported: ${escapeHtml(table.exportedOn)} &nbsp;|&nbsp; ${table.rows.length} records</div>`;
+    html += `<div class="hdr">${logoHtml}<div class="org">${escapeHtml(table.orgName)}</div>`;
+    html += `<div class="sub">${escapeHtml(table.title)} &nbsp;|&nbsp; Exported: ${escapeHtml(table.exportedOn)} &nbsp;|&nbsp; ${table.rows.length} records</div></div>`;
     html += '<table><thead><tr><th class="sno">#</th>' + table.labels.map((label) => `<th>${escapeHtml(label)}</th>`).join("") + "</tr></thead><tbody>";
     table.rows.forEach((row, index) => {
       html += `<tr><td class="sno">${index + 1}</td>`;
       html += row.map((value, i) => `<td${table.money[i] ? ' class="num"' : ""}>${escapeHtml(value)}</td>`).join("");
       html += "</tr>";
     });
-    return html + "</tbody></table></body></html>";
+    html += "</tbody></table>";
+    html += "<script>window.onload=function(){window.print();}</script>";
+    return html + "</body></html>";
   }
 
   // _toPdf — the same table on A4 landscape (CI3 rendered the HTML with Dompdf)

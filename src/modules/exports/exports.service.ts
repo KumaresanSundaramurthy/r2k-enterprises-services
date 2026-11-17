@@ -83,11 +83,15 @@ export class ExportsService {
     ]);
     const rows = this.withComputedColumns(request.moduleUID, await this.fetchRows(request, langCode));
 
+    const logoUrl = String(header?.Logo ?? "");
+    const orgLogo = format === "print" && logoUrl ? await ExportsService.inlineImage(logoUrl) : undefined;
+
     const columns = config.formats[format];
     const now = new Date();
     const table: ListExportTable = {
       title: config.title,
       orgName: String(header?.Name ?? ""),
+      orgLogo,
       exportedOn: phpDate("d M Y", now, settings.Timezone),
       labels: columns.map((column) => EXPORT_LABELS[column] ?? column),
       rows: rows.map((row) => columns.map((column) => ExportsService.cell(row, column, dateFormat))),
@@ -135,6 +139,20 @@ export class ExportsService {
   private withComputedColumns(moduleUID: number, rows: Row[]): Row[] {
     if (moduleUID < 200) return rows.map((row) => ({ ...row, BalanceAmount: Math.max(0, Number(row.NetAmount ?? 0) - Number(row.PaidAmount ?? 0)) }));
     return rows.map((row) => ({ ...row, IsActiveLabel: flag(row.IsActive) === 1 ? "Active" : "Inactive" }));
+  }
+
+  // Fetch a remote image URL and return it as a base64 data URI; falls back to the original URL on error
+  private static async inlineImage(url: string): Promise<string> {
+    if (!url || url.startsWith("data:")) return url;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) return url;
+      const mime = res.headers.get("content-type") || "image/png";
+      const buf = await res.arrayBuffer();
+      return `data:${mime};base64,${Buffer.from(buf).toString("base64")}`;
+    } catch {
+      return url;
+    }
   }
 
   // _cell — dates in the list date format, money via smartDecimal, everything else as text
