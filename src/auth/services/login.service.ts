@@ -73,20 +73,28 @@ export class LoginService {
     return { orgLogo: row?.Logo ? resolveCdnUrl(row.Logo) : "", twoStepLogin: toInt(row?.TwoStepLogin) === 1 };
   }
 
-  // Step 1: confirm the account can sign in with a password before the password screen is shown.
+  // Step 1: confirm the account exists and is reachable — Google accounts are allowed through so the
+  // user always reaches the password step; the provider check runs at the actual login call (Step 2).
   async identify(identifier: string) {
     const user = await this.userRepository.findStepOneUser(identifier.trim());
     if (!user) {
       throw new NotFoundException("User account not found.");
     }
-    this.assertCanSignIn({
-      isLocked: user.IsLocked,
-      authProvider: user.AuthProvider,
-      password: user.Password,
-      loginExpiry: user.LoginExpiryDateTime,
-      orgEmailVerified: user.IsEmailVerified,
-      orgEmail: user.OrgEmail,
-    });
+
+    if (phpBool(user.IsLocked)) {
+      throw new ForbiddenException("Account is locked. Contact your administrator.");
+    }
+    const expiry = parseDateTime(user.LoginExpiryDateTime);
+    if (expiry && expiry.getTime() < Date.now()) {
+      throw new ForbiddenException(`Your portal access expired on ${formatExpiryDate(expiry)}. Please contact your administrator.`);
+    }
+    if (!phpBool(user.IsEmailVerified)) {
+      throw new ForbiddenException({
+        message: "Your organisation email address has not been verified. Please check your inbox for the verification link.",
+        needsEmailVerification: true,
+        orgEmail: (user.OrgEmail ?? "").trim().toLowerCase(),
+      });
+    }
 
     const displayName = `${user.FirstName ?? ""} ${user.LastName ?? ""}`.trim() || user.UserName;
     return {
