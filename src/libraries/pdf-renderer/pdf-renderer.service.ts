@@ -46,29 +46,26 @@ export interface PdfOptions {
 }
 
 /*
- * Google Fonts CSS → woff2 base64 cache.
- * Key: the full CSS URL (includes family + weights).
- * Value: the CSS with every url(https://fonts.gstatic.com/…) replaced by a data: URI.
- * Lives for the lifetime of the warm function instance so each font is fetched at most once.
+ * Font cache: Google Fonts CSS URL → inlined CSS with every woff2 as a base64 data: URI.
+ * Populated lazily on first use; lives for the lifetime of the warm Vercel instance.
+ * On cache-hit the font bytes are served synchronously from memory in <1 ms.
  */
 const fontCss = new Map<string, string>();
 
 /*
- * Fetch a Google Fonts CSS URL, download every woff2 file it references, replace the
- * remote URLs with base64 data: URIs, and cache the result.  Uses the standard Chrome
- * UA so the API returns woff2 format rather than older formats.
+ * Fetches a Google Fonts CSS URL and replaces every remote woff2 URL with a base64 data: URI.
+ * All font files are downloaded in parallel to minimise latency.
+ * The result is cached so a given font is fetched at most once per warm instance.
  */
-async function inlinedFontCss(googleFontsUrl: string): Promise<string> {
+async function fetchInlinedFontCss(googleFontsUrl: string): Promise<string> {
   const cached = fontCss.get(googleFontsUrl);
   if (cached) return cached;
 
   const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
   const cssText = await fetch(googleFontsUrl, { headers: { "User-Agent": ua } }).then((r) => r.text());
 
-  // Collect unique woff2 URLs from the CSS
   const woff2Urls = [...new Set([...cssText.matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g)].map((m) => m[1]))];
 
-  // Fetch all font files in parallel
   const encoded = await Promise.all(
     woff2Urls.map(async (url) => {
       const buf = await fetch(url).then((r) => r.arrayBuffer());
@@ -77,7 +74,6 @@ async function inlinedFontCss(googleFontsUrl: string): Promise<string> {
     })
   );
 
-  // Replace every remote URL with its data: URI
   let inlined = cssText;
   for (const { url, dataUri } of encoded) {
     inlined = inlined.split(`url(${url})`).join(`url(${dataUri})`);
@@ -87,41 +83,18 @@ async function inlinedFontCss(googleFontsUrl: string): Promise<string> {
   return inlined;
 }
 
-/*
- * Replace every <link rel="stylesheet" href="https://fonts.googleapis.com/…"> in the HTML
- * with an inline <style> block that embeds all woff2 files as base64.
- * Returns the patched HTML and whether every font was successfully inlined.
- */
-async function inlineFonts(html: string): Promise<{ html: string; allInlined: boolean }> {
-  const tags = [...html.matchAll(/<link[^>]+href="(https:\/\/fonts\.googleapis\.com[^"]+)"[^>]*>/g)];
-  if (!tags.length) return { html, allInlined: true };
-
-  let result = html;
-  let allInlined = true;
-
-  await Promise.all(
-    tags.map(async ([tag, url]) => {
-      try {
-        const css = await inlinedFontCss(url);
-        result = result.replace(tag, `<style>${css}</style>`);
-      } catch {
-        allInlined = false;
-      }
-    })
-  );
-
-  return { html: result, allInlined };
-}
-
 /**
  * HTML → PDF with headless Chrome (the services counterpart of CI3's Dompdf). On Vercel / Linux it runs the
  * @sparticuz/chromium build; elsewhere CHROME_EXECUTABLE_PATH or a locally installed Chrome / Edge. The browser
  * is started once per warm instance and reused; each PDF gets its own page.
  *
- * Performance: Google Fonts are pre-fetched and base64-inlined server-side before handing the HTML to Chrome,
- * eliminating the in-browser font network round-trip.  The HTML is loaded with 'domcontentloaded' (no external
- * resource wait) and the font-ready barrier is skipped when all fonts are confirmed inlined.  On warm instances
- * this brings render time from ~1.5 s to ~400–700 ms.
+ * Performance strategy — two-tier font handling via request interception:
+ *   • Cache hit  (font already fetched this instance): served from memory in <1 ms → custom font renders.
+ *   • Cache miss (first render of a font on this instance): font request is blocked; Chrome uses the
+ *     fallback stack (Arial/Helvetica); the font is fetched and cached in the background so the NEXT
+ *     render on the same warm instance gets the custom font.
+ * Either way Chrome never stalls waiting on a network round-trip, keeping warm-instance render time
+ * in the 400–700 ms range.
  */
 @Injectable()
 export class PdfRendererService implements OnModuleDestroy {
@@ -137,15 +110,37 @@ export class PdfRendererService implements OnModuleDestroy {
     const page = await browser.newPage();
     try {
       const timeout = options.timeoutMs ?? 15000;
-      const { html: inlined, allInlined } = await inlineFonts(html);
 
-      /* domcontentloaded skips the external-resource wait; safe because fonts are already embedded. */
-      await page.setContent(inlined, { waitUntil: "domcontentloaded", timeout });
+      /* Intercept Google Fonts requests.
+         Cache hit  → respond immediately from memory (custom font, zero network wait).
+         Cache miss → abort the request so Chrome doesn't block; kick off a background fetch
+                      so the next render on this warm instance will get the cached font. */
+      await page.setRequestInterception(true);
+      page.on("request", (req) => {
+        const url = req.url();
+        const isFontApi = url.includes("fonts.googleapis.com");
+        const isFontFile = url.includes("fonts.gstatic.com");
 
-      /* Only wait for the font pipeline when at least one font link could not be inlined. */
-      if (!allInlined) {
-        await page.evaluate("document.fonts.ready.then(() => true)").catch(() => undefined);
-      }
+        if (isFontApi) {
+          const cached = fontCss.get(url);
+          if (cached) {
+            req.respond({ status: 200, contentType: "text/css; charset=utf-8", body: cached });
+          } else {
+            req.abort();
+            // Background fetch — no await, result lands in cache for next render
+            fetchInlinedFontCss(url).catch(() => undefined);
+          }
+        } else if (isFontFile) {
+          // Individual woff2 files are already embedded when fetched via fetchInlinedFontCss
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
+      /* domcontentloaded: don't wait for any external resources — fonts are served from cache
+         or aborted above, so there is nothing to wait for. */
+      await page.setContent(html, { waitUntil: "domcontentloaded", timeout });
 
       const pdf = await page.pdf({
         format: PdfRendererService.paperFormat(options.paperSize),
