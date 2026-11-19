@@ -172,9 +172,9 @@ export class ProductItemsController {
     return ciSuccess(await this.items.getAvailableSerials(dto.orgId, postInt(dto, "ProductUID")));
   }
 
-  @Get("getDropdownCache")
+  @Post("getDropdownCache")
   @ApiOperation({ summary: "Lookup lists of the product form (Data: primaryUnit, discType, prodType, prodTax, taxDetails, categories, brands)" })
-  async getDropdownCache(@Query() dto: DropdownCacheDto) {
+  async getDropdownCache(@Body() dto: DropdownCacheDto) {
     return ciSuccess(await this.items.getDropdowns(dto.orgId, dto.fields, dto.langCode));
   }
 
