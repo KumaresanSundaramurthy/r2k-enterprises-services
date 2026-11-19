@@ -139,7 +139,7 @@ export class EntryCategoriesService extends BaseRepository {
       .limit(CATEGORY_PAGE_SIZE)
       .offset(BaseRepository.offset(pageNo, CATEGORY_PAGE_SIZE));
     return rows.map((row) => {
-      const systemOwned = row.OrgUID === null || row.OrgUID === "";
+      const systemOwned = Number(row.OrgUID) === 0;
       return { ...row, IsSystem: systemOwned || (kind.defaultsLocked && Number(row.IsDefault) === 1) ? 1 : 0 };
     });
   }
@@ -155,11 +155,11 @@ export class EntryCategoriesService extends BaseRepository {
     return query;
   }
 
-  // Live categories of the organisation and the system ones
+  // Live categories of the organisation and the global defaults (OrgUID = 0)
   private visible(kind: CategoryKind, orgUID: number) {
     return this.read(kind.table)
       .where({ IsDeleted: 0, IsActive: 1 })
-      .where((scope) => scope.where("OrgUID", orgUID).orWhereNull("OrgUID"));
+      .where((scope) => scope.where("OrgUID", orgUID).orWhere("OrgUID", 0));
   }
 
   private log(kind: CategoryKind, ctx: WriteContext, verb: "CREATE" | "UPDATE" | "DELETE", categoryUID: number, ref: string, summary: string) {
