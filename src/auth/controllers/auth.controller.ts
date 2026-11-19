@@ -112,4 +112,17 @@ export class AuthController {
     await this.sessionService.refreshSession(session);
     return { message: "Cache refreshed successfully. Changes will reflect on next page load." };
   }
+
+  @Post("refreshAppCache")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ErpSessionGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Rebuild app cache — menus, permissions, user info, org info",
+    description: "Called by CI3 pages (Roles, General Settings) after permission or settings changes. Re-reads role menus, sub-menus, module details, permissions map and user info from DB, writes them back to Redis, and refreshes the session payload.",
+  })
+  async refreshAppCache(@ErpSession() session: ErpSessionContext) {
+    await this.sessionService.refreshSession(session);
+    return { Error: false, Message: "Cache refreshed successfully. Changes will reflect on next page load." };
+  }
 }
