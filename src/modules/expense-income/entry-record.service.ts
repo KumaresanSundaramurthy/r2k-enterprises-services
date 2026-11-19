@@ -97,19 +97,21 @@ export abstract class EntryRecordService {
     ]);
     const range = buildDateRange(saved || "this_month", settings.Timezone);
     return {
-      Categories: categories,
-      PaymentTypes: paymentTypes,
-      BankAccounts: bankAccounts,
-      OrgUsers: users,
-      ShowUserFilter: users.length > 1,
-      ShowStats: showStats,
-      SummaryStats: showStats ? await this.records.summaryStats(orgUID, branchUID) : {},
-      RowLimit: settings.RowLimit,
-      SavedDateRange: range.range,
-      SavedDateLabel: range.label,
-      SavedDateFrom: range.from,
-      SavedDateTo: range.to,
-      InitFilter: { Status: "All", DateFrom: range.from, DateTo: range.to },
+      Data: {
+        Categories: categories,
+        PaymentTypes: paymentTypes,
+        BankAccounts: bankAccounts,
+        OrgUsers: users,
+        ShowUserFilter: users.length > 1,
+        ShowStats: showStats,
+        SummaryStats: showStats ? await this.records.summaryStats(orgUID, branchUID) : {},
+        RowLimit: settings.RowLimit,
+        SavedDateRange: range.range,
+        SavedDateLabel: range.label,
+        SavedDateFrom: range.from,
+        SavedDateTo: range.to,
+        InitFilter: { Status: "All", DateFrom: range.from, DateTo: range.to },
+      },
     };
   }
 
