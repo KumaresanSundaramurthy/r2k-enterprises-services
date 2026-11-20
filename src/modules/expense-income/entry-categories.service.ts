@@ -155,11 +155,11 @@ export class EntryCategoriesService extends BaseRepository {
     return query;
   }
 
-  // Live categories of the organisation and the global defaults (OrgUID = 0)
+  // Live categories of the organisation and the global defaults (OrgUID = 0 or NULL)
   private visible(kind: CategoryKind, orgUID: number) {
     return this.read(kind.table)
       .where({ IsDeleted: 0, IsActive: 1 })
-      .where((scope) => scope.where("OrgUID", orgUID).orWhere("OrgUID", 0));
+      .where((scope) => scope.where("OrgUID", orgUID).orWhere("OrgUID", 0).orWhereNull("OrgUID"));
   }
 
   private log(kind: CategoryKind, ctx: WriteContext, verb: "CREATE" | "UPDATE" | "DELETE", categoryUID: number, ref: string, summary: string) {

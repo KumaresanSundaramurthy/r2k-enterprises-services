@@ -75,8 +75,8 @@ export class ExpensesService extends EntryRecordService {
   // openCreate / openEdit — dropdowns, and for an edit the expense, its lines, attachments and the vendor's state
   async getFormData(orgUID: number, expenseUID: number) {
     const { lookups, categories } = this.tk;
-    const [categoryList, paymentTypes, bankAccounts] = await Promise.all([categories.dropdown(EXPENSE_CATEGORIES, orgUID), lookups.paymentTypes(), lookups.bankAccounts(orgUID)]);
-    const base = { Categories: categoryList, PaymentTypes: paymentTypes, BankAccounts: bankAccounts };
+    const categoryList = await categories.dropdown(EXPENSE_CATEGORIES, orgUID);
+    const base = { Categories: categoryList };
     if (expenseUID <= 0) return { ...base, ExpenseData: null, ExpenseItems: [], ExpenseAttachments: [], VendorStateCode: "" };
 
     const expense = await this.liveRecord(orgUID, expenseUID);

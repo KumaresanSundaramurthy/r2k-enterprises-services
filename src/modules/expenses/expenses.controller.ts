@@ -40,7 +40,7 @@ export class ExpensesController {
   }
 
   @Get("getFormData")
-  @ApiOperation({ summary: "Add / edit form data: Categories, PaymentTypes, BankAccounts, ExpenseData, ExpenseItems, ExpenseAttachments, VendorStateCode" })
+  @ApiOperation({ summary: "Add / edit form data: Categories, ExpenseData, ExpenseItems, ExpenseAttachments, VendorStateCode" })
   async getFormData(@Query() dto: ExpenseFormQueryDto) {
     return ciSuccess(await this.expenses.getFormData(dto.orgId, postInt(dto, "ExpenseUID")));
   }
