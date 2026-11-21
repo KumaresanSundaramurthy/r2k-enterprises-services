@@ -1,6 +1,33 @@
 import { Injectable } from "@nestjs/common";
 import { erpKnexRead, erpKnexWrite } from "../../config/erp-knex";
 
+export interface PublicPlanRow {
+  SectorPlanUID: number;
+  SectorUID: number;
+  PlanUID: number;
+  Price: string;
+  TaxableAmount: string;
+  TaxAmount: string;
+  TotalAmount: string;
+  DurationDays: number;
+  MaxUsers: number;
+  MaxBranches: number;
+  PlanName: string;
+  PlanCode: string;
+  BillingCycle: string;
+  SectorName: string;
+  SectorCode: string;
+}
+
+export interface PlanModuleRow {
+  ModuleUID: number;
+  DisplayName: string;
+  Icon: string | null;
+  IconBg: string | null;
+  IconColor: string | null;
+  Description: string | null;
+}
+
 export interface UserSubscriptionRow {
   UserUID: string;
   OrgUID: string;
@@ -69,5 +96,38 @@ export class SubscriptionRepository {
       .where({ UserUID: userUID })
       .first();
     return row ?? null;
+  }
+
+  async getPublicPlans(): Promise<PublicPlanRow[]> {
+    return erpKnexRead("Billing.SectorPlanTbl as SPT")
+      .select(
+        "SPT.SectorPlanUID", "SPT.SectorUID", "SPT.PlanUID", "SPT.Price",
+        "SPT.TaxableAmount", "SPT.TaxAmount", "SPT.TotalAmount",
+        "SPT.DurationDays", "SPT.MaxUsers", "SPT.MaxBranches",
+        "SP.PlanName", "SP.PlanCode", "SP.BillingCycle",
+        "S.SectorName", "S.SectorCode"
+      )
+      .join("Billing.SubscriptionPlansTbl as SP", function () {
+        this.on("SP.PlanUID", "SPT.PlanUID").andOn("SP.IsActive", erpKnexRead.raw("1"));
+      })
+      .join("Billing.SectorsTbl as S", function () {
+        this.on("S.SectorUID", "SPT.SectorUID").andOn("S.IsActive", erpKnexRead.raw("1"));
+      })
+      .where("SPT.IsActive", 1)
+      .orderBy("SPT.SectorUID", "asc")
+      .orderBy("SPT.Price", "asc");
+  }
+
+  async getPlanModules(planUID: number, sectorUID: number): Promise<PlanModuleRow[]> {
+    return erpKnexRead("Billing.SectorPlanModulesTbl as PM")
+      .select(
+        "M.ModuleUID", "M.DisplayName", "M.Icon",
+        "M.IconBg", "M.IconColor", "M.Description"
+      )
+      .leftJoin("Modules.ModuleTbl as M", function () {
+        this.on("M.ModuleUID", "PM.ModuleUID").andOn("M.IsDeleted", erpKnexRead.raw("0"));
+      })
+      .where("PM.SectorUID", sectorUID)
+      .where("PM.PlanUID", planUID);
   }
 }

@@ -1,14 +1,20 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Allow } from "class-validator";
 import { Request } from "express";
 import { CiServerGuard } from "../../common/guards/ci-server.guard";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { SubscriptionCheck, SubscriptionCheckService } from "../services/subscription-check.service";
+import { PlanModuleRow, PublicPlanRow } from "../repositories/subscription.repository";
 import { getRequestMeta } from "../utils/device-info";
 
 class CheckDto {
   @Allow() user_uid!: number;
+}
+
+class PlanModulesDto {
+  @Allow() plan_uid!: number;
+  @Allow() sector_uid!: number;
 }
 
 class LogLoginAttemptDto {
@@ -31,6 +37,20 @@ export class CiSubscriptionController {
   @ApiOperation({ summary: "Subscription::checkSubscription — login-time validity check" })
   async check(@Body() dto: CheckDto): Promise<SubscriptionCheck> {
     return this.subscriptionCheck.check(Number(dto.user_uid));
+  }
+
+  @Get("public-plans")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Return all active public plans (Launch page pricing)" })
+  async publicPlans(): Promise<{ data: PublicPlanRow[] }> {
+    return { data: await this.subscriptionCheck.getPublicPlans() };
+  }
+
+  @Post("plan-modules")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Return modules included in a given plan+sector combination" })
+  async planModules(@Body() dto: PlanModulesDto): Promise<{ data: PlanModuleRow[] }> {
+    return { data: await this.subscriptionCheck.getPlanModules(Number(dto.plan_uid), Number(dto.sector_uid)) };
   }
 
   @Post("log-login-attempt")

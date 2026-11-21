@@ -4,7 +4,7 @@ import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { OrgContextDto, OrgLangContextDto } from "../../core/dto/org-context.dto";
-import { BankStatementDto, CustomerLedgerDto, ExportCustomerLedgerDto, ExportGstr1Dto, ExportSupplierLedgerDto, GstMonthDto, ReportAsOfDto, ReportDateDto, ReportGroupedRangeDto, ReportRangeDto, ReportYearDto, SupplierLedgerDto } from "./reports.dto";
+import { BankStatementDto, CustomerLedgerDto, ExportAsOfDto, ExportBankStatementDto, ExportCustomerLedgerDto, ExportDateRangeDto, ExportGstr1Dto, ExportGstr2bDto, ExportGstr3bDto, ExportGroupedRangeDto, ExportOrgOnlyDto, ExportRegisterDto, ExportSupplierLedgerDto, ExportYearDto, GstMonthDto, ReportAsOfDto, ReportDateDto, ReportGroupedRangeDto, ReportRangeDto, ReportYearDto, SupplierLedgerDto } from "./reports.dto";
 import { Response } from "express";
 import { ReportsService } from "./reports.service";
 
@@ -135,10 +135,28 @@ export class ReportsController {
     return ciSuccess(await this.reports.gstr2b(dto.orgId, dto.month, dto.year));
   }
 
+  @Post("exportGstr2b")
+  @HttpCode(HttpStatus.OK)
+  async exportGstr2b(@Body() dto: ExportGstr2bDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportGstr2b(dto.orgId, dto.month, dto.year, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
   @Get("getGstr3bData")
   @ApiOperation({ summary: "GSTR-3B for a month: outward (sales / returns) and itc (purchases / purchase returns) totals" })
   async getGstr3bData(@Query() dto: GstMonthDto) {
     return ciSuccess(await this.reports.gstr3b(dto.orgId, dto.month, dto.year));
+  }
+
+  @Post("exportGstr3b")
+  @HttpCode(HttpStatus.OK)
+  async exportGstr3b(@Body() dto: ExportGstr3bDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportGstr3b(dto.orgId, dto.month, dto.year, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
   }
 
   @Get("getGstr7Data")
@@ -329,5 +347,230 @@ export class ReportsController {
   @ApiOperation({ summary: "Expense register: DocNo, TransDate, VendorName, CategoryName, Amount, TaxAmount, NetAmount, DocStatus, IsPaid (max 2000)" })
   async getExpenseRegisterData(@Query() dto: ReportRangeDto) {
     return ciSuccess(await this.reports.expenseRegister(dto.orgId, dto.from, dto.to));
+  }
+
+  @Post("exportRegister")
+  @HttpCode(HttpStatus.OK)
+  async exportRegister(@Body() dto: ExportRegisterDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportRegister(dto.orgId, dto.report, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportGstr7")
+  @HttpCode(HttpStatus.OK)
+  async exportGstr7(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportTdsExpense(dto.orgId, "GSTR7", dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportTdsPayable")
+  @HttpCode(HttpStatus.OK)
+  async exportTdsPayable(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportTdsExpense(dto.orgId, "TDSPayable", dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportTdsReceivable")
+  @HttpCode(HttpStatus.OK)
+  async exportTdsReceivable(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportTdsReceivable(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportHsnSummary")
+  @HttpCode(HttpStatus.OK)
+  async exportHsnSummary(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportHsnSummary(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportExpenseRegister")
+  @HttpCode(HttpStatus.OK)
+  async exportExpenseRegister(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportExpenseRegister(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportItemwise")
+  @HttpCode(HttpStatus.OK)
+  async exportItemwise(@Body() dto: ExportRegisterDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportItemwise(dto.orgId, dto.report, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportItemWiseSales")
+  @HttpCode(HttpStatus.OK)
+  async exportItemWiseSales(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportItemWiseSales(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportItemWisePurchase")
+  @HttpCode(HttpStatus.OK)
+  async exportItemWisePurchase(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportItemWisePurchase(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportBrandWiseSales")
+  @HttpCode(HttpStatus.OK)
+  async exportBrandWiseSales(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportBrandWiseSales(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportLowStockAlert")
+  @HttpCode(HttpStatus.OK)
+  async exportLowStockAlert(@Body() dto: ExportOrgOnlyDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportLowStockAlert(dto.orgId, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportStockSummary")
+  @HttpCode(HttpStatus.OK)
+  async exportStockSummary(@Body() dto: ExportOrgOnlyDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportStockSummary(dto.orgId, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportVariantStock")
+  @HttpCode(HttpStatus.OK)
+  async exportVariantStock(@Body() dto: ExportOrgOnlyDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportVariantStock(dto.orgId, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportCustomerOutstanding")
+  @HttpCode(HttpStatus.OK)
+  async exportCustomerOutstanding(@Body() dto: ExportOrgOnlyDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportCustomerOutstanding(dto.orgId, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportSupplierOutstanding")
+  @HttpCode(HttpStatus.OK)
+  async exportSupplierOutstanding(@Body() dto: ExportOrgOnlyDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportSupplierOutstanding(dto.orgId, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportCustomerAgeing")
+  @HttpCode(HttpStatus.OK)
+  async exportCustomerAgeing(@Body() dto: ExportOrgOnlyDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportCustomerAgeing(dto.orgId, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportPLStatement")
+  @HttpCode(HttpStatus.OK)
+  async exportPLStatement(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportPLStatement(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportBalanceSheet")
+  @HttpCode(HttpStatus.OK)
+  async exportBalanceSheet(@Body() dto: ExportAsOfDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportBalanceSheet(dto.orgId, dto.asof, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportTrialBalance")
+  @HttpCode(HttpStatus.OK)
+  async exportTrialBalance(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportTrialBalance(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportPaymentReceived")
+  @HttpCode(HttpStatus.OK)
+  async exportPaymentReceived(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportPaymentReceived(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportPaymentMade")
+  @HttpCode(HttpStatus.OK)
+  async exportPaymentMade(@Body() dto: ExportDateRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportPaymentMade(dto.orgId, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportBankStatement")
+  @HttpCode(HttpStatus.OK)
+  async exportBankStatement(@Body() dto: ExportBankStatementDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportBankStatement(dto.orgId, dto.from, dto.to, dto.account, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportSalesSummary")
+  @HttpCode(HttpStatus.OK)
+  async exportSalesSummary(@Body() dto: ExportGroupedRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportSalesSummary(dto.orgId, dto.from, dto.to, dto.groupby, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportPurchaseSummary")
+  @HttpCode(HttpStatus.OK)
+  async exportPurchaseSummary(@Body() dto: ExportGroupedRangeDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportPurchaseSummary(dto.orgId, dto.from, dto.to, dto.groupby, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportMonthlySummary")
+  @HttpCode(HttpStatus.OK)
+  async exportMonthlySummary(@Body() dto: ExportYearDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportMonthlySummary(dto.orgId, dto.year, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
   }
 }

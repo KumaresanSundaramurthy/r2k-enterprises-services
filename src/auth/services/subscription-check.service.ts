@@ -4,7 +4,7 @@ import { MailService } from "../../common/mail/mail.service";
 import { RedisService } from "../../common/redis/redis.service";
 import { nowDateTime, parseDateTime, phpDate, toInt, todayDate } from "../../common/utils/php-compat";
 import { TelegramNotifier } from "../../libraries/telegram/telegram-notifier";
-import { SubscriptionRepository } from "../repositories/subscription.repository";
+import { SubscriptionRepository, PublicPlanRow, PlanModuleRow } from "../repositories/subscription.repository";
 import { SecurityRepository } from "../repositories/security.repository";
 import { RequestMeta } from "../utils/device-info";
 import { subscriptionExpiryEmail } from "../emails/auth-emails";
@@ -137,6 +137,14 @@ export class SubscriptionCheckService {
         userAgent: meta.userAgent,
       })
       .catch((err) => this.logger.error(`Login attempt log failed: ${(err as Error).message}`));
+  }
+
+  async getPublicPlans(): Promise<PublicPlanRow[]> {
+    return this.subscriptionRepository.getPublicPlans();
+  }
+
+  async getPlanModules(planUID: number, sectorUID: number): Promise<PlanModuleRow[]> {
+    return this.subscriptionRepository.getPlanModules(planUID, sectorUID);
   }
 
   // One-time token the renew page uses to identify the org (same Redis key CI3 reads).

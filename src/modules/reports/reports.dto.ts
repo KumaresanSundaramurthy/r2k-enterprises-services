@@ -58,3 +58,42 @@ export class ExportGstr1Dto extends GstMonthDto {
   @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
   @ApiProperty({ enum: ["b2b", "b2cs", "cdnr"] }) @Allow() section!: string;
 }
+
+export class ExportGstr2bDto extends GstMonthDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+export class ExportGstr3bDto extends GstMonthDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+const REGISTER_REPORTS = ["invoice", "purchase", "salesReturn", "purchaseReturn", "deliveryChallan"] as const;
+
+export class ExportDateRangeDto extends ReportRangeDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+export class ExportRegisterDto extends ReportRangeDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+  @ApiProperty({ enum: REGISTER_REPORTS }) @Allow() report!: string;
+}
+
+export class ExportOrgOnlyDto extends OrgContextDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+export class ExportAsOfDto extends ReportAsOfDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+export class ExportBankStatementDto extends BankStatementDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+export class ExportGroupedRangeDto extends ReportGroupedRangeDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
+
+export class ExportYearDto extends ReportYearDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+}
