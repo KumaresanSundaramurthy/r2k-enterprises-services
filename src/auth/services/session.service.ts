@@ -121,8 +121,11 @@ export class SessionService {
     const ttl = remainingTtl > 0 ? remainingTtl : this.tokens.sessionTtlSeconds;
 
     // Keep the single-session token and audit id so the refresh does not end the session.
+    // Preserve previous-login info: DB was already updated to NOW before this refresh runs.
     built.payload.User.SessionToken = session.data.User.SessionToken;
     built.payload.User.auditId = session.data.User.auditId ?? 0;
+    built.payload.User.LastLoginOn = session.data.User.LastLoginOn ?? null;
+    built.payload.User.LastLoginDevice = session.data.User.LastLoginDevice ?? null;
     await this.redis.set(session.key, built.payload, ttl);
     await this.writeUserCaches(userUID, orgToken, built, user, ttl);
     await this.redis.del(this.redis.orgKey("org-info", orgToken));
