@@ -19,6 +19,10 @@ export interface ExportRequest {
   org: ExportOrg;
   timezone: string;
   colWidths?: string[];
+  /* Optional key-value summary cards shown above the table (e.g. stats for a ledger) */
+  summaryItems?: { label: string; value: string }[];
+  /* Optional footer totals row appended after the last data row */
+  totalRow?: (string | number)[];
 }
 
 // Pdf / Print → printable HTML the browser prints (or saves as PDF); CSV / Excel → a file download
@@ -80,8 +84,13 @@ export class ExportService {
     if (contactLine) out += csvLine([contactLine]);
     out += csvLine([`${request.previewName} — Generated: ${this.generatedAt(request.timezone)}`]);
     out += "\n";
+    if (request.summaryItems?.length) {
+      for (const item of request.summaryItems) out += csvLine([item.label, item.value]);
+      out += "\n";
+    }
     out += csvLine(request.headers);
     for (const row of request.rows) out += csvLine(row);
+    if (request.totalRow?.length) out += csvLine(request.totalRow);
     return Buffer.from(out, "utf8");
   }
 
@@ -108,6 +117,16 @@ export class ExportService {
     };
     r++;
 
+    if (request.summaryItems?.length) {
+      for (const item of request.summaryItems) {
+        sheet.getCell(r, 1).value = item.label;
+        sheet.getCell(r, 1).font = { bold: true };
+        sheet.getCell(r, 2).value = item.value;
+        r++;
+      }
+      r++;
+    }
+
     const headerRow = sheet.getRow(r++);
     headerRow.values = request.headers;
     for (let c = 1; c <= colCount; c++) {
@@ -117,11 +136,21 @@ export class ExportService {
     }
     for (const row of request.rows) sheet.getRow(r++).values = row;
 
+    if (request.totalRow?.length) {
+      const totRow = sheet.getRow(r++);
+      totRow.values = request.totalRow;
+      for (let c = 1; c <= colCount; c++) {
+        totRow.getCell(c).font = { bold: true };
+        totRow.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+      }
+    }
+
     // Auto-size from the table cells (the merged header lines are left out, like PhpSpreadsheet)
+    const allRows = request.totalRow ? [...request.rows, request.totalRow] : request.rows;
     for (let c = 0; c < colCount; c++) {
       const longest = Math.max(
         request.headers[c].length,
-        ...request.rows.map((row) => String(row[c] ?? "").length)
+        ...allRows.map((row) => String(row[c] ?? "").length)
       );
       sheet.getColumn(c + 1).width = longest + 2;
     }
@@ -150,7 +179,7 @@ export class ExportService {
   }
 
   private printHtml(request: ExportRequest): string {
-    const { org, previewName, headers, rows, colWidths } = request;
+    const { org, previewName, headers, rows, colWidths, summaryItems, totalRow } = request;
     const { orgName, addressParts, contactParts } = this.orgLines(org);
     const logo = org?.Logo ? `<img src="${escapeHtml(org.Logo)}" style="height:48px;object-fit:contain;" alt="Logo">` : "";
     const colGroup = colWidths?.length
@@ -158,6 +187,12 @@ export class ExportService {
       : "";
     const th = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
     const tb = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell))}</td>`).join("")}</tr>`).join("");
+    const tfoot = totalRow?.length
+      ? `<tfoot><tr>${totalRow.map((cell) => `<td class="tot-cell">${escapeHtml(String(cell))}</td>`).join("")}</tr></tfoot>`
+      : "";
+    const summaryHtml = summaryItems?.length
+      ? `<div class="summary-row">${summaryItems.map((item) => `<div class="summary-card"><div class="summary-label">${escapeHtml(item.label)}</div><div class="summary-value">${escapeHtml(item.value)}</div></div>`).join("")}</div>`
+      : "";
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>${escapeHtml(orgName || previewName)}</title>
@@ -173,10 +208,15 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9px;}
 .report-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
 .report-bar h4{margin:0;font-size:11px;font-weight:700;color:#1e293b;}
 .report-bar .gen-date{font-size:8px;color:#64748b;}
+.summary-row{display:flex;gap:8px;margin-bottom:8px;}
+.summary-card{flex:1;border:1px solid #cbd5e1;border-radius:4px;padding:5px 8px;background:#f8fafc;}
+.summary-label{font-size:7.5px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;}
+.summary-value{font-size:9.5px;font-weight:700;color:#1e293b;}
 table{width:100%;border-collapse:collapse;table-layout:${colGroup ? "fixed" : "auto"};}
 th{background:#e2e8f0;padding:5px 6px;text-align:left;border:1px solid #cbd5e1;font-size:8.5px;color:#1e293b;font-weight:700;white-space:nowrap;overflow:hidden;}
 td{padding:4px 6px;border:1px solid #e2e8f0;font-size:8px;color:#334155;word-break:break-word;overflow-wrap:break-word;}
 tr:nth-child(even) td{background:#f8fafc;}
+tfoot .tot-cell{background:#e2e8f0;font-weight:700;border:1px solid #cbd5e1;font-size:8.5px;color:#1e293b;}
 @media print{@page{size:A4 landscape;margin:10mm 15mm;}}
 </style>
 </head><body>
@@ -190,7 +230,8 @@ ${contactParts.length ? `<div class="org-contact">${contactParts.map(escapeHtml)
 <h4>${escapeHtml(previewName)}</h4>
 <span class="gen-date">Generated: ${this.generatedAt(request.timezone)}</span>
 </div>
-<table>${colGroup}<thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>
+${summaryHtml}
+<table>${colGroup}<thead><tr>${th}</tr></thead><tbody>${tb}</tbody>${tfoot}</table>
 </body></html>`;
   }
 

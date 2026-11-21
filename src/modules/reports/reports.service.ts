@@ -240,6 +240,7 @@ export class ReportsService {
 
     const exportRows: (string | number)[][] = [];
     let rowNum = 0;
+    let totDebit = 0, totCredit = 0;
 
     if (obDebit > 0.005 || obCredit > 0.005) {
       rowNum++;
@@ -258,7 +259,9 @@ export class ReportsService {
       rowNum++;
       const dr = Number(row.Debit  ?? 0);
       const cr = Number(row.Credit ?? 0);
-      runBal += party === "C" ? dr - cr : cr - dr;
+      runBal   += party === "C" ? dr - cr : cr - dr;
+      totDebit  += dr;
+      totCredit += cr;
       const txDate = row.TxDate ? phpDate(dateFormat, new Date(String(row.TxDate) + "T00:00:00"), tz) : "—";
       exportRows.push([
         rowNum,
@@ -271,6 +274,22 @@ export class ReportsService {
       ]);
     }
 
+    /* Stats summary (matches the 4 cards on the page) */
+    const obBal   = party === "C" ? obDebit - obCredit : obCredit - obDebit;
+    const obAbs   = Math.abs(obBal);
+    const obSide  = obBal >= 0 ? (party === "C" ? " Dr" : " Cr") : (party === "C" ? " Cr" : " Dr");
+    const clsAbs  = Math.abs(runBal);
+    const clsSide = runBal >= 0 ? (party === "C" ? " Dr" : " Cr") : (party === "C" ? " Cr" : " Dr");
+    const summaryItems = [
+      { label: "Opening Balance",         value: obAbs.toFixed(2) + obSide },
+      { label: party === "C" ? "Total Debit (Invoices)" : "Total Credit (Bills)", value: (party === "C" ? totDebit : totCredit).toFixed(2) },
+      { label: party === "C" ? "Total Credit (Payments)" : "Total Debit (Payments)", value: (party === "C" ? totCredit : totDebit).toFixed(2) },
+      { label: "Closing Balance",         value: clsAbs.toFixed(2) + clsSide },
+    ];
+
+    /* Total row for the table footer */
+    const totalRow: (string | number)[] = ["", "Total", "", "", totDebit.toFixed(2), totCredit.toFixed(2), clsAbs.toFixed(2) + clsSide];
+
     const partyLabel = party === "C" ? "Customer" : "Supplier";
     return this.exporter.build({
       type,
@@ -282,6 +301,8 @@ export class ReportsService {
       org,
       timezone: tz,
       colWidths: ["4%", "10%", "14%", "12%", "14%", "14%", "12%"],
+      summaryItems,
+      totalRow,
     });
   }
 
