@@ -1,10 +1,11 @@
-import { Controller, Get, Query, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Res, StreamableFile, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { OrgContextDto, OrgLangContextDto } from "../../core/dto/org-context.dto";
-import { BankStatementDto, CustomerLedgerDto, GstMonthDto, ReportAsOfDto, ReportDateDto, ReportGroupedRangeDto, ReportRangeDto, ReportYearDto, SupplierLedgerDto } from "./reports.dto";
+import { BankStatementDto, CustomerLedgerDto, ExportCustomerLedgerDto, ExportSupplierLedgerDto, GstMonthDto, ReportAsOfDto, ReportDateDto, ReportGroupedRangeDto, ReportRangeDto, ReportYearDto, SupplierLedgerDto } from "./reports.dto";
+import { Response } from "express";
 import { ReportsService } from "./reports.service";
 
 const ITEMWISE_COLUMNS = "DocNo, TransDate, PartyName, ItemName, Quantity, UnitName, UnitPrice, TaxableAmount, TaxPercentage, TaxAmount, DiscountAmount, NetAmount (max 3000)";
@@ -273,6 +274,46 @@ export class ReportsController {
   @ApiOperation({ summary: "Supplier ledger: rows (TxDate, TxType, RefNo, Debit, Credit) and opening { debit, credit }" })
   async getSupplierLedgerData(@Query() dto: SupplierLedgerDto) {
     return ciSuccess(await this.reports.ledger(dto.orgId, "S", Number(dto.vendorUID) || 0, dto.from, dto.to));
+  }
+
+  @Post("exportCustomerLedger")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Export the customer ledger as Print/CSV/Excel",
+    description:
+      "CSV / Excel: the file itself (Content-Disposition: attachment; Customer_Ledger.csv / .xlsx) — fetch it as a blob. " +
+      "Pdf / Print: { Error: false, HtmlData } — an A4 landscape page for the browser print dialog.",
+  })
+  async exportCustomerLedger(@Body() dto: ExportCustomerLedgerDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportLedger(dto.orgId, "C", Number(dto.customerUID) || 0, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({
+      "Content-Type": result.contentType,
+      "Content-Disposition": `attachment; filename="${result.fileName}"`,
+      "Access-Control-Expose-Headers": "Content-Disposition",
+      Pragma: "no-cache",
+    });
+    return new StreamableFile(result.body);
+  }
+
+  @Post("exportSupplierLedger")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Export the supplier ledger as Print/CSV/Excel",
+    description:
+      "CSV / Excel: the file itself (Content-Disposition: attachment; Supplier_Ledger.csv / .xlsx) — fetch it as a blob. " +
+      "Pdf / Print: { Error: false, HtmlData } — an A4 landscape page for the browser print dialog.",
+  })
+  async exportSupplierLedger(@Body() dto: ExportSupplierLedgerDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportLedger(dto.orgId, "S", Number(dto.vendorUID) || 0, dto.from, dto.to, dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({
+      "Content-Type": result.contentType,
+      "Content-Disposition": `attachment; filename="${result.fileName}"`,
+      "Access-Control-Expose-Headers": "Content-Disposition",
+      Pragma: "no-cache",
+    });
+    return new StreamableFile(result.body);
   }
 
   @Get("getExpenseRegisterData")

@@ -4,6 +4,7 @@ import { OrgSettingsService } from "../../core/org/org-settings.service";
 import { CiValidationError } from "../../core/response/ci-response";
 import { isIsoDate } from "../accounting/accounting-common";
 import { todayIn } from "../hrms/hrms-common";
+import { ExportResult, ExportService, ExportType } from "../../libraries/export/export.service";
 import { GroupBy, ReportsRepository } from "./reports.repository";
 
 const GROUP_BYS: GroupBy[] = ["month", "quarter", "year"];
@@ -29,7 +30,8 @@ export type RegisterReport = "invoice" | "purchase" | "salesReturn" | "purchaseR
 export class ReportsService {
   constructor(
     private readonly repo: ReportsRepository,
-    private readonly orgSettings: OrgSettingsService
+    private readonly orgSettings: OrgSettingsService,
+    private readonly exporter: ExportService
   ) {}
 
   // from / to default to 1 January and today of the organisation's year (CI3: the server's date)
@@ -215,6 +217,72 @@ export class ReportsService {
     const r = await this.range(orgUID, from, to);
     const [rows, opening] = await Promise.all([this.repo.ledger(orgUID, party, partyUID, r.from, r.to), this.repo.ledgerOpening(orgUID, party, partyUID, r.from)]);
     return { ...ReportsService.ok(rows), opening };
+  }
+
+  // exportCustomerLedger / exportSupplierLedger — same data as ledger() built into Print/CSV/Excel
+  async exportLedger(orgUID: number, party: "C" | "S", partyUID: number, from: unknown, to: unknown, type: ExportType): Promise<ExportResult> {
+    if (!(partyUID > 0)) throw new CiValidationError(party === "C" ? "Please select a customer." : "Please select a supplier.");
+    const r = await this.range(orgUID, from, to);
+    const [rows, opening, settings, org] = await Promise.all([
+      this.repo.ledger(orgUID, party, partyUID, r.from, r.to),
+      this.repo.ledgerOpening(orgUID, party, partyUID, r.from),
+      this.orgSettings.get(orgUID),
+      this.orgSettings.getHeader(orgUID),
+    ]);
+
+    const dateFormat = settings.ListDateTimeFormat ?? "d M Y";
+    const tz = settings.Timezone || "UTC";
+    const obDebit  = Number((opening as Record<string, unknown>).debit  ?? 0);
+    const obCredit = Number((opening as Record<string, unknown>).credit ?? 0);
+
+    /* Customer ledger: balance = Debit – Credit (invoices ↑, payments ↓) */
+    let runBal = party === "C" ? obDebit - obCredit : obCredit - obDebit;
+
+    const exportRows: (string | number)[][] = [];
+    let rowNum = 0;
+
+    if (obDebit > 0.005 || obCredit > 0.005) {
+      rowNum++;
+      exportRows.push([
+        rowNum,
+        "—",
+        "Opening Balance",
+        "Opening Balance",
+        obDebit  > 0.005 ? obDebit.toFixed(2)  : "",
+        obCredit > 0.005 ? obCredit.toFixed(2) : "",
+        Math.abs(runBal).toFixed(2) + (runBal < 0 ? " Cr" : " Dr"),
+      ]);
+    }
+
+    for (const row of rows as Record<string, unknown>[]) {
+      rowNum++;
+      const dr = Number(row.Debit  ?? 0);
+      const cr = Number(row.Credit ?? 0);
+      runBal += party === "C" ? dr - cr : cr - dr;
+      const txDate = row.TxDate ? phpDate(dateFormat, new Date(String(row.TxDate) + "T00:00:00"), tz) : "—";
+      exportRows.push([
+        rowNum,
+        txDate,
+        String(row.TxType || ""),
+        String(row.RefNo  || "—"),
+        dr > 0.005 ? dr.toFixed(2) : "",
+        cr > 0.005 ? cr.toFixed(2) : "",
+        Math.abs(runBal).toFixed(2) + (runBal < 0 ? " Cr" : " Dr"),
+      ]);
+    }
+
+    const partyLabel = party === "C" ? "Customer" : "Supplier";
+    return this.exporter.build({
+      type,
+      fileName: `${partyLabel}_Ledger`,
+      sheetName: `${partyLabel} Ledger`,
+      previewName: `${partyLabel} Ledger | ${r.from} to ${r.to}`,
+      headers: ["#", "Date", "Type", "Ref No", "Debit", "Credit", "Balance"],
+      rows: exportRows,
+      org,
+      timezone: tz,
+      colWidths: ["4%", "10%", "14%", "12%", "14%", "14%", "12%"],
+    });
   }
 
   // getExpenseRegisterData — committed expenses in the range

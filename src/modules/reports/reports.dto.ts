@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Allow } from "class-validator";
 import { OrgContextDto } from "../../core/dto/org-context.dto";
+import { EXPORT_TYPES, ExportType } from "../../libraries/export/export.service";
 
 // Reports over a date range (YYYY-MM-DD; default 1 January → today)
 export class ReportRangeDto extends OrgContextDto {
@@ -19,6 +20,16 @@ export class CustomerLedgerDto extends ReportRangeDto {
 
 export class SupplierLedgerDto extends ReportRangeDto {
   @ApiProperty({ type: Number }) @Allow() vendorUID?: string | number;
+}
+
+export class ExportCustomerLedgerDto extends CustomerLedgerDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+  @ApiPropertyOptional() @Allow() langCode?: string;
+}
+
+export class ExportSupplierLedgerDto extends SupplierLedgerDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+  @ApiPropertyOptional() @Allow() langCode?: string;
 }
 
 export class BankStatementDto extends ReportRangeDto {
