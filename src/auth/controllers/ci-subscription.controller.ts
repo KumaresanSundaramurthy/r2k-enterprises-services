@@ -5,7 +5,7 @@ import { Request } from "express";
 import { CiServerGuard } from "../../common/guards/ci-server.guard";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { SubscriptionCheck, SubscriptionCheckService } from "../services/subscription-check.service";
-import { PlanModuleRow, PublicPlanRow } from "../repositories/subscription.repository";
+import { AllPlanModuleRow, PlanModuleRow, PublicPlanRow } from "../repositories/subscription.repository";
 import { getRequestMeta } from "../utils/device-info";
 
 class CheckDto {
@@ -51,6 +51,13 @@ export class CiSubscriptionController {
   @ApiOperation({ summary: "Return modules included in a given plan+sector combination" })
   async planModules(@Body() dto: PlanModulesDto): Promise<{ data: PlanModuleRow[] }> {
     return { data: await this.subscriptionCheck.getPlanModules(Number(dto.plan_uid), Number(dto.sector_uid)) };
+  }
+
+  @Get("all-plan-modules")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Return modules for all plans in one query (Launch page use)" })
+  async allPlanModules(): Promise<{ data: AllPlanModuleRow[] }> {
+    return { data: await this.subscriptionCheck.getAllPlanModules() };
   }
 
   @Post("log-login-attempt")

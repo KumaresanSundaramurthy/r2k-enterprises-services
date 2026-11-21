@@ -28,6 +28,11 @@ export interface PlanModuleRow {
   Description: string | null;
 }
 
+export interface AllPlanModuleRow extends PlanModuleRow {
+  PlanUID: number;
+  SectorUID: number;
+}
+
 export interface UserSubscriptionRow {
   UserUID: string;
   OrgUID: string;
@@ -129,5 +134,17 @@ export class SubscriptionRepository {
       })
       .where("PM.SectorUID", sectorUID)
       .where("PM.PlanUID", planUID);
+  }
+
+  async getAllPlanModules(): Promise<AllPlanModuleRow[]> {
+    return erpKnexRead("Billing.SectorPlanModulesTbl as PM")
+      .select(
+        "PM.PlanUID", "PM.SectorUID",
+        "M.ModuleUID", "M.DisplayName", "M.Icon",
+        "M.IconBg", "M.IconColor", "M.Description"
+      )
+      .leftJoin("Modules.ModuleTbl as M", function () {
+        this.on("M.ModuleUID", "PM.ModuleUID").andOn("M.IsDeleted", erpKnexRead.raw("0"));
+      });
   }
 }
