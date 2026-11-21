@@ -53,3 +53,8 @@ export class GstMonthDto extends OrgContextDto {
 export class ReportYearDto extends OrgContextDto {
   @ApiPropertyOptional({ example: "2026", description: "Calendar year; default this year" }) @Allow() year?: string;
 }
+
+export class ExportGstr1Dto extends GstMonthDto {
+  @ApiProperty({ enum: EXPORT_TYPES }) @Allow() Type!: ExportType;
+  @ApiProperty({ enum: ["b2b", "b2cs", "cdnr"] }) @Allow() section!: string;
+}

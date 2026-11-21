@@ -119,6 +119,56 @@ export class ReportsService {
     return { Status: "Success", ...(await this.repo.gstr1(orgUID, p.month, p.year)) };
   }
 
+  async exportGstr1(orgUID: number, month: unknown, year: unknown, section: string, type: ExportType): Promise<ExportResult> {
+    const p = await this.gstPeriod(orgUID, month, year);
+    const [data, settings, org] = await Promise.all([
+      this.repo.gstr1(orgUID, p.month, p.year),
+      this.orgSettings.get(orgUID),
+      this.orgSettings.getHeader(orgUID),
+    ]);
+    const tz = settings.Timezone || "UTC";
+    const monthName = new Date(p.year, p.month - 1, 1).toLocaleString("en-US", { month: "long" });
+    const period = `${monthName} ${p.year}`;
+
+    type GRow = Record<string, unknown>;
+    const d = (v: unknown) => v ? new Date(String(v) + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+    const n = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toFixed(2);
+
+    let headers: string[];
+    let rows: (string | number)[][];
+    let previewName: string;
+    let fileName: string;
+
+    if (section === "b2cs") {
+      headers = ["#", "Invoice No", "Date", "Customer Name", "Place of Supply", "Taxable", "CGST", "SGST", "IGST", "Total Tax", "Invoice Value"];
+      rows = (data.b2cs as GRow[]).map((r, i) => [i + 1, String(r.InvNo || r.DocNo || ""), d(r.TransDate), String(r.CustomerName || ""), String(r.PlaceOfSupply || ""), n(r.Taxable), n(r.CgstAmount), n(r.SgstAmount), n(r.IgstAmount), n(r.TaxAmount), n(r.NetAmount)]);
+      previewName = `GSTR-1 B2CS | ${period}`;
+      fileName = `GSTR1_B2CS_${p.year}_${String(p.month).padStart(2, "0")}`;
+    } else if (section === "cdnr") {
+      headers = ["#", "Credit Note No", "Date", "Recipient GSTIN", "Recipient Name", "Taxable", "CGST", "SGST", "IGST", "Total Tax", "Note Value"];
+      rows = (data.cdnr as GRow[]).map((r, i) => [i + 1, String(r.InvNo || r.DocNo || ""), d(r.TransDate), String(r.RecipientGSTIN || r.SupplierGSTIN || ""), String(r.RecipientName || r.SupplierName || ""), n(r.Taxable), n(r.CgstAmount), n(r.SgstAmount), n(r.IgstAmount), n(r.TaxAmount), n(r.NetAmount)]);
+      previewName = `GSTR-1 CDNR | ${period}`;
+      fileName = `GSTR1_CDNR_${p.year}_${String(p.month).padStart(2, "0")}`;
+    } else {
+      headers = ["#", "Invoice No", "Date", "Recipient GSTIN", "Recipient Name", "Place of Supply", "Taxable", "CGST", "SGST", "IGST", "Total Tax", "Invoice Value"];
+      rows = (data.b2b as GRow[]).map((r, i) => [i + 1, String(r.InvNo || r.DocNo || ""), d(r.TransDate), String(r.RecipientGSTIN || r.SupplierGSTIN || ""), String(r.RecipientName || r.SupplierName || r.CustomerName || ""), String(r.PlaceOfSupply || ""), n(r.Taxable), n(r.CgstAmount), n(r.SgstAmount), n(r.IgstAmount), n(r.TaxAmount), n(r.NetAmount)]);
+      previewName = `GSTR-1 B2B | ${period}`;
+      fileName = `GSTR1_B2B_${p.year}_${String(p.month).padStart(2, "0")}`;
+    }
+
+    /* Last 6 columns are always the numeric ones (Taxable → Invoice/Note Value) */
+    const numStart = headers.length - 6;
+    const tots = new Array(6).fill(0) as number[];
+    for (const r of rows) {
+      for (let i = 0; i < 6; i++) tots[i] += parseFloat(String(r[numStart + i])) || 0;
+    }
+    const totalRow: (string | number)[] = [...new Array(numStart).fill("")];
+    totalRow[1] = "Total";
+    tots.forEach((t) => totalRow.push(t.toFixed(2)));
+
+    return this.exporter.build({ type, fileName, sheetName: previewName, previewName, headers, rows, org, timezone: tz, totalRow });
+  }
+
   // getGstr2bData — purchase bills from GSTIN vendors for the month
   async gstr2b(orgUID: number, month: unknown, year: unknown) {
     const p = await this.gstPeriod(orgUID, month, year);

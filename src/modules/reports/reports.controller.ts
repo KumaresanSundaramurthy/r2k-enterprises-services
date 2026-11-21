@@ -4,7 +4,7 @@ import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { OrgContextDto, OrgLangContextDto } from "../../core/dto/org-context.dto";
-import { BankStatementDto, CustomerLedgerDto, ExportCustomerLedgerDto, ExportSupplierLedgerDto, GstMonthDto, ReportAsOfDto, ReportDateDto, ReportGroupedRangeDto, ReportRangeDto, ReportYearDto, SupplierLedgerDto } from "./reports.dto";
+import { BankStatementDto, CustomerLedgerDto, ExportCustomerLedgerDto, ExportGstr1Dto, ExportSupplierLedgerDto, GstMonthDto, ReportAsOfDto, ReportDateDto, ReportGroupedRangeDto, ReportRangeDto, ReportYearDto, SupplierLedgerDto } from "./reports.dto";
 import { Response } from "express";
 import { ReportsService } from "./reports.service";
 
@@ -118,6 +118,15 @@ export class ReportsController {
   @ApiOperation({ summary: "GSTR-1 for a month: b2b (GSTIN customers), b2cs (others) and cdnr (sales returns to GSTIN customers)" })
   async getGstr1Data(@Query() dto: GstMonthDto) {
     return ciSuccess(await this.reports.gstr1(dto.orgId, dto.month, dto.year));
+  }
+
+  @Post("exportGstr1")
+  @HttpCode(HttpStatus.OK)
+  async exportGstr1(@Body() dto: ExportGstr1Dto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.reports.exportGstr1(dto.orgId, dto.month, dto.year, dto.section ?? "b2b", dto.Type);
+    if (result.kind === "html") return ciSuccess({ HtmlData: result.html });
+    res.set({ "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.fileName}"`, "Access-Control-Expose-Headers": "Content-Disposition", Pragma: "no-cache" });
+    return new StreamableFile(result.body);
   }
 
   @Get("getGstr2bData")
