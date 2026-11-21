@@ -5,7 +5,6 @@ import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { MailService } from "../../common/mail/mail.service";
 import { enquiryNotificationEmail } from "../emails/launch-emails";
 import { phpDate } from "../../common/utils/php-compat";
-import { TelegramNotifier } from "../../libraries/telegram/telegram-notifier";
 
 class SendEnquiryDto {
   @IsNotEmpty() name!: string;
@@ -36,21 +35,9 @@ export class CiLaunchController {
       receivedAt
     );
     try {
-      await this.mail.send("rishika2kenterprises@gmail.com", "Rishika 2K Enterprises", email.subject, email.html);
-      TelegramNotifier.alert("New Website Enquiry", {
-        Name:    dto.name,
-        Phone:   dto.phone,
-        Email:   dto.email   || "—",
-        Product: dto.product || "—",
-        Message: dto.message || "—",
-        Time:    receivedAt,
-      });
-    } catch (err) {
-      TelegramNotifier.error("Launch::sendEnquiry — email failed", err, {
-        Name:  dto.name,
-        Phone: dto.phone,
-        Email: dto.email || "—",
-      });
+      await this.mail.send("rishikakumaresan@gmail.com", "Rishika 2K Enterprises", email.subject, email.html);
+    } catch {
+      // The visitor always sees success; a failed email is not reported to them
     }
     return { ok: true };
   }
