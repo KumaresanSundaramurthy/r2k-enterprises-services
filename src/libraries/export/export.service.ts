@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { escapeHtml, phpDate } from "../../common/utils/php-compat";
 import { imageInfo } from "../../common/utils/image-info";
+import { PdfRendererService } from "../pdf-renderer/pdf-renderer.service";
 
 export const EXPORT_TYPES = ["CSV", "Excel", "Pdf", "Print"] as const;
 export type ExportType = (typeof EXPORT_TYPES)[number];
@@ -54,9 +55,17 @@ const clean = (value: string | null | undefined) => {
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
 
+  constructor(private readonly pdfRenderer: PdfRendererService) {}
+
   async build(request: ExportRequest): Promise<ExportResult> {
     switch (request.type) {
       case "Pdf":
+        return {
+          kind: "file",
+          fileName: `${request.fileName}.pdf`,
+          contentType: "application/pdf",
+          body: await this.pdfRenderer.render(this.printHtml(request)),
+        };
       case "Print":
         return { kind: "html", html: this.printHtml(request) };
       case "CSV":
