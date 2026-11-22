@@ -299,16 +299,18 @@ export class SignupService {
     sql = sql
       .replace(/\{\{OrgUid\}\}/g, String(orgUID))
       .replace(/\{\{UserUid\}\}/g, String(userUID))
-      .replace(/\{\{OrgShortCode\}\}/g, shortCode.replace(/'/g, "''"));
+      .replace(/\{\{OrgShortCode\}\}/g, `'${shortCode.replace(/'/g, "''")}'`);
 
-    sql = sql.replace(/\bINSERT\s+INTO\b/gi, "INSERT IGNORE INTO");
+    /* Add Settings. schema prefix + convert to INSERT IGNORE in one pass.
+       Cannot use `USE Settings` because each erpKnexWrite.raw() call may
+       get a different connection from the pool. */
+    sql = sql.replace(/\bINSERT\s+INTO\s+`(\w+)`/gi, "INSERT IGNORE INTO `Settings`.`$1`");
 
     const statements = sql
       .split(";")
       .map((s) => s.trim())
       .filter((s) => /\b(INSERT|UPDATE|DELETE)\b/i.test(s));
 
-    await erpKnexWrite.raw("USE Settings");
     for (const stmt of statements) {
       try {
         await erpKnexWrite.raw(stmt);
