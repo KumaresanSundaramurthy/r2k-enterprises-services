@@ -3,6 +3,21 @@ import { JwtModule } from "@nestjs/jwt";
 import { AuthController } from "./controllers/auth.controller";
 import { CiSubscriptionController } from "./controllers/ci-subscription.controller";
 import { CiLaunchController } from "./controllers/ci-launch.controller";
+import { CiSignupController } from "./controllers/ci-signup.controller";
+import { CiBillingController } from "./controllers/ci-billing.controller";
+import { RazorpayController } from "./controllers/razorpay.controller";
+import { CiCheckoutController } from "./controllers/ci-checkout.controller";
+import { SubscribeController } from "./controllers/subscribe.controller";
+import { SubscriptionController } from "./controllers/subscription.controller";
+import { RenewalController } from "./controllers/renewal.controller";
+import { RenewalTokenGuard } from "./guards/renewal-token.guard";
+import { SignupService } from "./services/signup.service";
+import { SubscriptionBillingService } from "./services/subscription-billing.service";
+import { BillingPlanService } from "./services/billing-plan.service";
+import { RazorpaySubscriptionService } from "./services/razorpay-subscription.service";
+import { RazorpayInvoiceService } from "./services/razorpay-invoice.service";
+import { SubscriptionCheckoutService } from "./services/subscription-checkout.service";
+import { BillingModule } from "../modules/billing/billing.module";
 import { CiUserLookupController } from "./controllers/ci-user-lookup.controller";
 import { EmailVerificationController } from "./controllers/email-verification.controller";
 import { OAuthController } from "./controllers/oauth.controller";
@@ -25,9 +40,16 @@ import { SubscriptionCheckService } from "./services/subscription-check.service"
 
 // ERP (CI3) user authentication. Sessions are shared with the CI3 app through Redis and the JWT_KEY-signed cookie.
 @Module({
-  imports: [JwtModule.register({ secret: process.env.JWT_KEY, signOptions: { algorithm: "HS256" } })],
-  controllers: [AuthController, PasswordController, EmailVerificationController, OAuthController, OnboardingController, CiUserLookupController, CiSubscriptionController, CiLaunchController],
+  imports: [JwtModule.register({ secret: process.env.JWT_KEY, signOptions: { algorithm: "HS256" } }), BillingModule],
+  controllers: [AuthController, PasswordController, EmailVerificationController, OAuthController, OnboardingController, CiUserLookupController, CiSubscriptionController, CiLaunchController, CiSignupController, CiBillingController, CiCheckoutController, SubscribeController, SubscriptionController, RenewalController, RazorpayController],
   providers: [
+    SignupService,
+    SubscriptionBillingService,
+    BillingPlanService,
+    RenewalTokenGuard,
+    RazorpaySubscriptionService,
+    RazorpayInvoiceService,
+    SubscriptionCheckoutService,
     AuthTokenService,
     SessionService,
     LoginService,

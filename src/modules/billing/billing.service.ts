@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { FileUploadService } from "../../libraries/file-upload/file-upload.service";
 import { PdfRendererService } from "../../libraries/pdf-renderer/pdf-renderer.service";
+import { billingFy } from "../../core/utils/billing-fy";
 
 export interface BillingInvoiceData {
   invoice_number: string;
@@ -367,12 +368,5 @@ export class BillingService {
     return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
   }
 
-  /** @returns Current financial year in YYYY-YYYY format (e.g. "2026-2027") */
-  private _billingFy(): string {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth() + 1;
-    const startYear = month >= 4 ? year : year - 1;
-    return `${startYear}-${startYear + 1}`;
-  }
+  private _billingFy(): string { return billingFy("full"); }
 }

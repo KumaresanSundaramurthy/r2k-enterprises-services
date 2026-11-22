@@ -370,6 +370,9 @@ export class SessionService {
         subscription.Status = row.Status ?? "Trial";
         subscription.EndDate = row.EndDate ?? "";
         subscription.GracePeriodDays = row.GracePeriodDays === null ? 7 : toInt(row.GracePeriodDays);
+        if (row.SectorPlanUID !== null && row.SectorPlanUID !== undefined) {
+          (subscription as Record<string, unknown>).SectorPlanUID = toInt(row.SectorPlanUID);
+        }
         const end = parseDateTime(row.EndDate);
         const graceEnd = end ? end.getTime() + subscription.GracePeriodDays * 86400 * 1000 : 0;
         subscription.IsExpired =

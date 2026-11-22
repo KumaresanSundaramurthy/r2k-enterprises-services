@@ -167,7 +167,7 @@ export class SessionDataRepository {
 
   async getLatestOrgSubscription(orgUID: number): Promise<DbRow | null> {
     const row = await erpKnexRead("Billing.OrgSubscriptionTbl as os")
-      .select(erpKnexRead.raw("COALESCE(sp.PlanName, 'Free Trial') AS PlanName"), "os.Status", "os.EndDate", "os.GracePeriodDays")
+      .select(erpKnexRead.raw("COALESCE(sp.PlanName, 'Free Trial') AS PlanName"), "os.Status", "os.EndDate", "os.GracePeriodDays", "os.SectorPlanUID")
       .leftJoin("Billing.SectorPlanTbl as spt", "spt.SectorPlanUID", "os.SectorPlanUID")
       .leftJoin("Billing.SubscriptionPlansTbl as sp", "sp.PlanUID", "spt.PlanUID")
       .where("os.OrgUID", orgUID)

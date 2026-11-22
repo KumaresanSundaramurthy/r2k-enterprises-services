@@ -25,6 +25,7 @@ export interface ErpSessionPayload {
     EndDate: string;
     GracePeriodDays: number;
     IsExpired: boolean;
+    SectorPlanUID?: number;
   };
   [key: string]: unknown;
 }

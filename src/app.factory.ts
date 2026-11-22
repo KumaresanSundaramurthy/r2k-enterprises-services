@@ -7,7 +7,7 @@ import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 
 // Shared by the long-running server (main.ts) and the Vercel function (serverless.ts).
 export async function createApp(): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   // Behind a proxy (Vercel/Render): use the client IP from X-Forwarded-For (login rate limiting and audit rely on it)
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
