@@ -18,6 +18,7 @@ import { RazorpaySubscriptionService } from "./services/razorpay-subscription.se
 import { RazorpayInvoiceService } from "./services/razorpay-invoice.service";
 import { SubscriptionCheckoutService } from "./services/subscription-checkout.service";
 import { BillingModule } from "../modules/billing/billing.module";
+import { CiDevToolsController } from "./controllers/ci-dev-tools.controller";
 import { CiUserLookupController } from "./controllers/ci-user-lookup.controller";
 import { EmailVerificationController } from "./controllers/email-verification.controller";
 import { OAuthController } from "./controllers/oauth.controller";
@@ -41,7 +42,7 @@ import { SubscriptionCheckService } from "./services/subscription-check.service"
 // ERP (CI3) user authentication. Sessions are shared with the CI3 app through Redis and the JWT_KEY-signed cookie.
 @Module({
   imports: [JwtModule.register({ secret: process.env.JWT_KEY, signOptions: { algorithm: "HS256" } }), BillingModule],
-  controllers: [AuthController, PasswordController, EmailVerificationController, OAuthController, OnboardingController, CiUserLookupController, CiSubscriptionController, CiLaunchController, CiSignupController, CiBillingController, CiCheckoutController, SubscribeController, SubscriptionController, RenewalController, RazorpayController],
+  controllers: [AuthController, PasswordController, EmailVerificationController, OAuthController, OnboardingController, CiUserLookupController, CiSubscriptionController, CiLaunchController, CiSignupController, CiBillingController, CiCheckoutController, SubscribeController, SubscriptionController, RenewalController, RazorpayController, CiDevToolsController],
   providers: [
     SignupService,
     SubscriptionBillingService,
