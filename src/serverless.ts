@@ -18,11 +18,19 @@ async function getListener(): Promise<RequestListener> {
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (!listener) {
-    listener = getListener().catch((err) => {
+    listener = getListener().catch((err: unknown) => {
       listener = null;
-      throw err;
+      return Promise.reject(err);
     });
   }
-  const handle = await listener;
-  handle(req, res);
+  try {
+    const handle = await listener;
+    handle(req, res);
+  } catch (err: unknown) {
+    console.error("App init failed:", err instanceof Error ? err.stack ?? err.message : String(err));
+    if (!res.headersSent) {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ message: "Service temporarily unavailable. Please try again." }));
+    }
+  }
 }

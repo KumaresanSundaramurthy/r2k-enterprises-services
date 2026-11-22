@@ -15,29 +15,32 @@ export async function createApp(): Promise<NestExpressApplication> {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  // CLIENT_URL="*" allows any origin (the request's origin is echoed back, so cookies/credentials also work)
-  const origin = allowedOrigins.includes("*") ? true : allowedOrigins.length > 0 ? allowedOrigins : undefined;
+  /* CLIENT_URL="*"  → echo the caller's Origin back (works with credentials too)
+     CLIENT_URL unset → same safe default (never use the literal "*" string since that breaks credentials) */
+  const origin = allowedOrigins.includes("*") || allowedOrigins.length === 0 ? true : allowedOrigins;
   // maxAge: the browser caches the preflight (OPTIONS) result per URL instead of repeating it before every call
   app.enableCors({ origin, credentials: true, maxAge: 86400 });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  const swaggerConfigBuilder = new DocumentBuilder()
-    .setTitle("R2K Enterprises Services API")
-    .setDescription(
-      "Common backend services for R2K Enterprises — auth, products (MySQL-backed ERP catalog), cart, orders and Razorpay payments."
-    )
-    .setVersion("1.0.0")
-    .addBearerAuth();
+  /* Skip Swagger on Vercel: scanning 50+ modules synchronously adds 3-5 s to every cold start,
+     pushing it past Vercel's 10 s function timeout and returning 500 on the first request.
+     VERCEL=1 is injected automatically by Vercel at build and runtime. */
+  if (!process.env.VERCEL) {
+    const swaggerConfigBuilder = new DocumentBuilder()
+      .setTitle("R2K Enterprises Services API")
+      .setDescription(
+        "Common backend services for R2K Enterprises — auth, products (MySQL-backed ERP catalog), cart, orders and Razorpay payments."
+      )
+      .setVersion("1.0.0")
+      .addBearerAuth();
 
-  // No servers listed: OpenAPI then defaults to the host the docs page was loaded from (Vercel or localhost),
-  // and Swagger UI hides the Servers dropdown.
-
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfigBuilder.build());
-  SwaggerModule.setup("api-docs", app, swaggerDocument, {
-    customSiteTitle: "R2K Enterprises Services API Docs",
-  });
+    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfigBuilder.build());
+    SwaggerModule.setup("api-docs", app, swaggerDocument, {
+      customSiteTitle: "R2K Enterprises Services API Docs",
+    });
+  }
 
   return app;
 }
