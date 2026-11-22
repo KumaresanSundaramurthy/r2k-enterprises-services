@@ -257,6 +257,8 @@ export class SignupService {
       return { orgUID, userUID, subscription };
     });
 
+    await this.runSignupSeed(orgUID, userUID, shortCode);
+
     if (!subscription.isPaid && subscription.orderUID > 0) {
       await this.createFreePaymentAndInvoice(orgUID, subscription.orderUID, plan, now);
       await erpKnexWrite("Billing.OrgSubscriptionTbl").where({ OrgUID: orgUID }).update({ OrderUID: null });
@@ -273,6 +275,48 @@ export class SignupService {
       attempt = `${base}${i}`;
     }
     return attempt;
+  }
+
+  /* Fetches the seed SQL from SIGNUP_SEED_URL, substitutes the three placeholders,
+     and runs each INSERT statement. INSERT IGNORE is used so the OrgSettingsTbl row
+     (already inserted inside the transaction) is skipped without error. Never throws — a
+     failure is logged and alerted but does not undo the signup. */
+  private async runSignupSeed(orgUID: number, userUID: number, shortCode: string): Promise<void> {
+    const url = process.env.SIGNUP_SEED_URL;
+    if (!url) return;
+
+    let sql: string;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      sql = await res.text();
+    } catch (err) {
+      this.logger.error(`Signup seed fetch failed: ${(err as Error).message}`);
+      TelegramNotifier.error("SignupService::runSignupSeed — fetch failed", err, { OrgUID: orgUID });
+      return;
+    }
+
+    sql = sql
+      .replace(/\{\{OrgUid\}\}/g, String(orgUID))
+      .replace(/\{\{UserUid\}\}/g, String(userUID))
+      .replace(/\{\{OrgShortCode\}\}/g, shortCode.replace(/'/g, "''"));
+
+    sql = sql.replace(/\bINSERT\s+INTO\b/gi, "INSERT IGNORE INTO");
+
+    const statements = sql
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => /\b(INSERT|UPDATE|DELETE)\b/i.test(s));
+
+    await erpKnexWrite.raw("USE Settings");
+    for (const stmt of statements) {
+      try {
+        await erpKnexWrite.raw(stmt);
+      } catch (err) {
+        this.logger.error(`Signup seed statement failed: ${(err as Error).message}`);
+        TelegramNotifier.error("SignupService::runSignupSeed — statement failed", err, { OrgUID: orgUID, Stmt: stmt.slice(0, 200) });
+      }
+    }
   }
 
   // OrgSettingsTbl defaults shared by both signups
@@ -503,6 +547,8 @@ export class SignupService {
       await erpKnexWrite("Billing.OrgSubscriptionTbl").where({ OrgUID: orgUID }).update({ OrderUID: null });
       await erpKnexWrite("Billing.OrgSubscriptionTbl").where({ OrgUID: orgUID }).whereNull("FirstPaidOn").update({ FirstPaidOn: now });
     }
+
+    await this.runSignupSeed(orgUID, userUID, shortCode);
 
     // Verification email — a failure does not undo the signup
     await this.emailVerification.sendVerificationEmail(orgUID, text(form, "AdminFirstName"), email).catch((err) => {

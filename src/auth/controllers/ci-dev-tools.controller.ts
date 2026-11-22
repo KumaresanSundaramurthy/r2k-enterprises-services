@@ -1,7 +1,7 @@
 import { Body, Controller, ForbiddenException, HttpCode, HttpStatus, Post, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Allow } from "class-validator";
-import { CiServerGuard } from "../../common/guards/ci-server.guard";
+import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
 import { CiExceptionFilter } from "../../core/response/ci-exception.filter";
 import { ciSuccess } from "../../core/response/ci-response";
 import { erpKnexWrite } from "../../config/erp-knex";
@@ -13,7 +13,7 @@ class PurgeOrgDto {
 /** Dev / staging only — purge all rows for a given OrgUID across every table. Never available in production. */
 @ApiTags("Dev Tools")
 @ApiBearerAuth()
-@UseGuards(CiServerGuard)
+@UseGuards(CiJwtGuard)
 @UseFilters(CiExceptionFilter)
 @Controller("api/dev")
 export class CiDevToolsController {
@@ -33,50 +33,78 @@ export class CiDevToolsController {
 
     const deleted: Record<string, number> = {};
 
+    /* raw() needs a default DB on the connection even when every table is schema-qualified */
+    await erpKnexWrite.raw("USE Organisation");
     await erpKnexWrite.raw("SET FOREIGN_KEY_CHECKS = 0");
     try {
-      /* ── Tables with no OrgUID column — must delete via JOIN before auto-scan ── */
+      const run = async (label: string, sql: string) => {
+        const [res] = await erpKnexWrite.raw(sql, [orgUID]);
+        if (res?.affectedRows > 0) deleted[label] = res.affectedRows;
+      };
 
-      /* RoleSubMenusTbl — joined through SubMenusTbl */
-      const rsm = await erpKnexWrite.raw(
+      /* Order matches your SQL — child tables first, OrganisationTbl last */
+      await run("UserRole.RoleSubMenusTbl",
         `DELETE rsm FROM UserRole.RoleSubMenusTbl rsm
          INNER JOIN Modules.SubMenusTbl sm ON sm.SubMenuUID = rsm.SubMenuUID
-         WHERE sm.OrgUID = ?`,
-        [orgUID]
-      );
-      if (rsm[0]?.affectedRows > 0) deleted["UserRole.RoleSubMenusTbl"] = rsm[0].affectedRows;
+         WHERE sm.OrgUID = ?`);
 
-      /* RoleMainMenusTbl — joined through MainMenusTbl */
-      const rmm = await erpKnexWrite.raw(
+      await run("UserRole.RoleMainMenusTbl",
         `DELETE rmm FROM UserRole.RoleMainMenusTbl rmm
          INNER JOIN Modules.MainMenusTbl mm ON mm.MainMenuUID = rmm.MainMenuUID
-         WHERE mm.OrgUID = ?`,
-        [orgUID]
-      );
-      if (rmm[0]?.affectedRows > 0) deleted["UserRole.RoleMainMenusTbl"] = rmm[0].affectedRows;
+         WHERE mm.OrgUID = ?`);
 
-      /* PasswordHistoryTbl — joined through UserTbl */
-      const ph = await erpKnexWrite.raw(
+      await run("Modules.SubMenusTbl",
+        `DELETE FROM Modules.SubMenusTbl WHERE OrgUID = ?`);
+
+      await run("Modules.MainMenusTbl",
+        `DELETE FROM Modules.MainMenusTbl WHERE OrgUID = ?`);
+
+      await run("Users.UserBranchAccessTbl",
+        `DELETE FROM Users.UserBranchAccessTbl WHERE OrgUID = ?`);
+
+      await run("Users.PasswordHistoryTbl",
         `DELETE ph FROM Users.PasswordHistoryTbl ph
          INNER JOIN Users.UserTbl u ON u.UserUID = ph.UserUID
-         WHERE u.OrgUID = ?`,
-        [orgUID]
-      );
-      if (ph[0]?.affectedRows > 0) deleted["Users.PasswordHistoryTbl"] = ph[0].affectedRows;
+         WHERE u.OrgUID = ?`);
 
-      /* ── Auto-scan: all tables that directly have OrgUID column ── */
-      const tables: { TABLE_SCHEMA: string; TABLE_NAME: string }[] = await erpKnexWrite
-        .select("TABLE_SCHEMA", "TABLE_NAME")
-        .from("information_schema.COLUMNS")
-        .where("COLUMN_NAME", "OrgUID")
-        .whereNotIn("TABLE_SCHEMA", ["information_schema", "performance_schema", "mysql", "sys"]);
+      await run("Users.UserTbl",
+        `DELETE FROM Users.UserTbl WHERE OrgUID = ?`);
 
-      for (const { TABLE_SCHEMA, TABLE_NAME } of tables) {
-        const count = await erpKnexWrite(`${TABLE_SCHEMA}.${TABLE_NAME}`)
-          .where("OrgUID", orgUID)
-          .delete();
-        if (count > 0) deleted[`${TABLE_SCHEMA}.${TABLE_NAME}`] = count;
-      }
+      await run("UserRole.RolesTbl",
+        `DELETE FROM UserRole.RolesTbl WHERE OrgUID = ?`);
+
+      await run("Settings.OrgProductSettingsTbl",
+        `DELETE FROM Settings.OrgProductSettingsTbl WHERE OrgUID = ?`);
+
+      await run("Settings.OrgSettingsTbl",
+        `DELETE FROM Settings.OrgSettingsTbl WHERE OrgUID = ?`);
+
+      await run("Settings.PrintThemeConfigTbl",
+        `DELETE FROM Settings.PrintThemeConfigTbl WHERE OrgUID = ?`);
+
+      await run("Settings.ThermalPrintConfigTbl",
+        `DELETE FROM Settings.ThermalPrintConfigTbl WHERE OrgUID = ?`);
+
+      await run("Settings.MessageTemplatesTbl",
+        `DELETE FROM Settings.MessageTemplatesTbl WHERE OrgUID = ?`);
+
+      await run("Settings.TransactionPrefixTbl",
+        `DELETE FROM Settings.TransactionPrefixTbl WHERE OrgUID = ?`);
+
+      await run("Settings.TransactionSettingsTbl",
+        `DELETE FROM Settings.TransactionSettingsTbl WHERE OrgUID = ?`);
+
+      await run("Billing.SubscriptionOrdersTbl",
+        `DELETE FROM Billing.SubscriptionOrdersTbl WHERE OrgUID = ?`);
+
+      await run("Billing.OrgSubscriptionTbl",
+        `DELETE FROM Billing.OrgSubscriptionTbl WHERE OrgUID = ?`);
+
+      await run("Organisation.BranchesTbl",
+        `DELETE FROM Organisation.BranchesTbl WHERE OrgUID = ?`);
+
+      await run("Organisation.OrganisationTbl",
+        `DELETE FROM Organisation.OrganisationTbl WHERE OrgUID = ?`);
     } finally {
       await erpKnexWrite.raw("SET FOREIGN_KEY_CHECKS = 1");
     }
