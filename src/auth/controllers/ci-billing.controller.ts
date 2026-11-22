@@ -52,6 +52,11 @@ class ActivateScheduledPlanDto {
   @Allow() orgUID!: number;
 }
 
+class CreatePendingOrderDto {
+  @Allow() orgUID!: number;
+  @Allow() sectorPlanUID!: number;
+}
+
 /**
  * CI3 server-to-server billing endpoints — called from CI3 controllers via services_post/services_get
  * with CiServerGuard (the internal SERVICES_SECRET token, not the public JWT).
@@ -62,11 +67,6 @@ class ActivateScheduledPlanDto {
 @Controller("api/billing")
 @UseGuards(CiServerGuard)
 @UseFilters(CiExceptionFilter)
-class CreatePendingOrderDto {
-  @Allow() orgUID!: number;
-  @Allow() sectorPlanUID!: number;
-}
-
 export class CiBillingController {
   constructor(
     private readonly billingOps: SubscriptionBillingService,
