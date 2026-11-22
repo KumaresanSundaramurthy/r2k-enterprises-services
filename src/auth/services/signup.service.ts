@@ -277,45 +277,46 @@ export class SignupService {
     return attempt;
   }
 
-  /* Fetches the seed SQL from SIGNUP_SEED_URL, substitutes the three placeholders,
-     and runs each INSERT statement. INSERT IGNORE is used so the OrgSettingsTbl row
-     (already inserted inside the transaction) is skipped without error. Never throws — a
-     failure is logged and alerted but does not undo the signup. */
   private async runSignupSeed(orgUID: number, userUID: number, shortCode: string): Promise<void> {
     const url = process.env.SIGNUP_SEED_URL;
     if (!url) return;
 
-    let sql: string;
+    let raw: string;
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      sql = await res.text();
+      raw = await res.text();
     } catch (err) {
       this.logger.error(`Signup seed fetch failed: ${(err as Error).message}`);
       TelegramNotifier.error("SignupService::runSignupSeed — fetch failed", err, { OrgUID: orgUID });
       return;
     }
 
-    sql = sql
-      .replace(/\{\{OrgUid\}\}/g, String(orgUID))
-      .replace(/\{\{UserUid\}\}/g, String(userUID))
-      .replace(/\{\{OrgShortCode\}\}/g, `'${shortCode.replace(/'/g, "''")}'`);
+    const sql = raw
+      .replace(/^﻿/, "")                                    // strip UTF-8 BOM
+      .replace(/\{\{OrgUid\}\}/g,       String(orgUID))
+      .replace(/\{\{UserUid\}\}/g,      String(userUID))
+      .replace(/\{\{OrgShortCode\}\}/g, `'${shortCode.replace(/'/g, "''")}'`)
+      /* Add Settings. schema prefix + convert to INSERT IGNORE in one pass.
+         Cannot use `USE Settings` — each erpKnexWrite.raw() may get a different
+         pooled connection with no default database. */
+      .replace(/\bINSERT\s+INTO\s+`(\w+)`/gi, "INSERT IGNORE INTO `Settings`.`$1`");
 
-    /* Add Settings. schema prefix + convert to INSERT IGNORE in one pass.
-       Cannot use `USE Settings` because each erpKnexWrite.raw() call may
-       get a different connection from the pool. */
-    sql = sql.replace(/\bINSERT\s+INTO\s+`(\w+)`/gi, "INSERT IGNORE INTO `Settings`.`$1`");
-
+    /* Keep only statements that start with INSERT — strips comment-only chunks
+       that the semicolon split produces from lines like "/* comment *\/;" */
     const statements = sql
       .split(";")
       .map((s) => s.trim())
-      .filter((s) => /\b(INSERT|UPDATE|DELETE)\b/i.test(s));
+      .filter((s) => /^INSERT\b/i.test(s));
+
+    this.logger.log(`Signup seed OrgUID=${orgUID}: executing ${statements.length} statements`);
 
     for (const stmt of statements) {
       try {
         await erpKnexWrite.raw(stmt);
+        this.logger.log(`Signup seed OK: ${stmt.slice(0, 80).replace(/\s+/g, " ")}`);
       } catch (err) {
-        this.logger.error(`Signup seed statement failed: ${(err as Error).message}`);
+        this.logger.error(`Signup seed FAILED [${(err as Error).message}]: ${stmt.slice(0, 150).replace(/\s+/g, " ")}`);
         TelegramNotifier.error("SignupService::runSignupSeed — statement failed", err, { OrgUID: orgUID, Stmt: stmt.slice(0, 200) });
       }
     }

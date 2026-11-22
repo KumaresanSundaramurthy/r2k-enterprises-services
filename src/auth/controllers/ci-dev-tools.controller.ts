@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, HttpCode, HttpStatus, Post, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, HttpCode, HttpStatus, Logger, Post, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Allow } from "class-validator";
 import { CiJwtGuard } from "../../common/guards/ci-jwt.guard";
@@ -8,6 +8,12 @@ import { erpKnexWrite } from "../../config/erp-knex";
 
 class PurgeOrgDto {
   @Allow() orgUID!: number;
+}
+
+class TestSeedDto {
+  @Allow() orgUID!: number;
+  @Allow() userUID!: number;
+  @Allow() shortCode!: string;
 }
 
 /** Dev / staging only — purge all rows for a given OrgUID across every table. Never available in production. */
@@ -110,5 +116,52 @@ export class CiDevToolsController {
     }
 
     return ciSuccess({ orgUID, deleted }, `Purged OrgUID ${orgUID} from ${Object.keys(deleted).length} table(s).`);
+  }
+
+  /* TEMPORARY — test signup seed SQL against an existing org. Remove after verification. */
+  @Post("test-seed")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "TEMP: run signup seed SQL for an existing org — dev/staging only" })
+  async testSeed(@Body() dto: TestSeedDto) {
+    if (process.env.CI_ENV === "production") {
+      throw new ForbiddenException("Not available in production.");
+    }
+
+    const logger = new Logger("TestSeed");
+    const orgUID   = Number(dto.orgUID);
+    const userUID  = Number(dto.userUID);
+    const shortCode = String(dto.shortCode);
+
+    const url = process.env.SIGNUP_SEED_URL;
+    if (!url) return ciSuccess({ ran: false }, "SIGNUP_SEED_URL not set.");
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return ciSuccess({ ran: false }, `Fetch failed: HTTP ${res.status}`);
+
+    const sql = (await res.text())
+      .replace(/^﻿/, "")
+      .replace(/\{\{OrgUid\}\}/g,       String(orgUID))
+      .replace(/\{\{UserUid\}\}/g,      String(userUID))
+      .replace(/\{\{OrgShortCode\}\}/g, `'${shortCode.replace(/'/g, "''")}'`)
+      .replace(/\bINSERT\s+INTO\s+`(\w+)`/gi, "INSERT IGNORE INTO `Settings`.`$1`");
+
+    const statements = sql.split(";").map((s) => s.trim()).filter((s) => /^INSERT\b/i.test(s));
+    logger.log(`Found ${statements.length} INSERT statements`);
+
+    const results: { sql: string; ok: boolean; error?: string }[] = [];
+    for (const stmt of statements) {
+      const preview = stmt.slice(0, 120).replace(/\s+/g, " ");
+      try {
+        await erpKnexWrite.raw(stmt);
+        logger.log(`OK: ${preview}`);
+        results.push({ sql: preview, ok: true });
+      } catch (err) {
+        const msg = (err as Error).message;
+        logger.error(`FAILED [${msg}]: ${preview}`);
+        results.push({ sql: preview, ok: false, error: msg });
+      }
+    }
+
+    return ciSuccess({ orgUID, userUID, shortCode, results });
   }
 }
