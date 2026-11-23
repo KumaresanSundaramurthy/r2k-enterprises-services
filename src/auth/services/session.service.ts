@@ -82,12 +82,14 @@ export class SessionService {
     const redisKey = `${randomUUID()}-${userUID}`;
     await this.redis.set(redisKey, built.payload, ttl);
 
-    // TEMP DEBUG: verify write persisted and log which database is in use
+    // TEMP DEBUG: verify write persisted and log connection details
     const verifyRead = await this.redis.get(redisKey);
     TelegramNotifier.alert("SessionService::createSession — write verify", {
       key: redisKey,
       written: String(!!verifyRead),
       db: String(process.env.REDIS_DATABASE ?? "0 (default)"),
+      host: String(process.env.REDIS_HOST ?? "(not set)"),
+      port: String(process.env.REDIS_PORT ?? "6379 (default)"),
       ttl: String(ttl),
     });
 
