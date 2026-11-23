@@ -257,7 +257,10 @@ export class SignupService {
       return { orgUID, userUID, subscription };
     });
 
-    await this.runSignupSeed(orgUID, userUID, shortCode);
+    await this.runSignupSeed(orgUID, userUID, shortCode).catch((err) => {
+      this.logger.error(`runSignupSeed threw unexpectedly: ${(err as Error).message}`);
+      TelegramNotifier.error("SignupService::runSignupSeed — unexpected throw (google)", err, { OrgUID: orgUID });
+    });
 
     if (!subscription.isPaid && subscription.orderUID > 0) {
       await this.createFreePaymentAndInvoice(orgUID, subscription.orderUID, plan, now);
@@ -551,7 +554,10 @@ export class SignupService {
       await erpKnexWrite("Billing.OrgSubscriptionTbl").where({ OrgUID: orgUID }).whereNull("FirstPaidOn").update({ FirstPaidOn: now });
     }
 
-    await this.runSignupSeed(orgUID, userUID, shortCode);
+    await this.runSignupSeed(orgUID, userUID, shortCode).catch((err) => {
+      this.logger.error(`runSignupSeed threw unexpectedly: ${(err as Error).message}`);
+      TelegramNotifier.error("SignupService::runSignupSeed — unexpected throw", err, { OrgUID: orgUID });
+    });
 
     // Verification email — a failure does not undo the signup
     await this.emailVerification.sendVerificationEmail(orgUID, text(form, "AdminFirstName"), email).catch((err) => {
