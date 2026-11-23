@@ -560,7 +560,7 @@ export class SignupService {
     });
 
     // Verification email — a failure does not undo the signup
-    await this.emailVerification.sendVerificationEmail(orgUID, text(form, "AdminFirstName"), email).catch((err) => {
+    await this.emailVerification.sendVerificationEmail(orgUID, text(form, "AdminFirstName"), email, text(form, "AppBaseUrl") || undefined).catch((err) => {
       this.logger.error(`Verification email for org ${orgUID} failed: ${(err as Error).message}`);
       TelegramNotifier.error("Signup_model::sendVerificationEmail", err, { OrgUID: orgUID, ToEmail: email });
     });

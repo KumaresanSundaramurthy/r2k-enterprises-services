@@ -66,7 +66,7 @@ export class EmailVerificationService {
     return { message: GENERIC_RESEND_MESSAGE };
   }
 
-  async sendVerificationEmail(orgUID: number, firstName: string, email: string): Promise<void> {
+  async sendVerificationEmail(orgUID: number, firstName: string, email: string, appBaseUrl?: string): Promise<void> {
     const token = randomBytes(32).toString("hex");
     const affected = await this.organisationRepository.setEmailVerifyToken(
       orgUID,
@@ -76,7 +76,8 @@ export class EmailVerificationService {
     if (affected === 0) {
       throw new Error(`No organisation row updated for OrgUID=${orgUID}`);
     }
-    const content = emailVerificationEmail(firstName, appUrl(`verify-email/${token}`), this.mail.fromName);
+    const base = appBaseUrl ? appBaseUrl.replace(/\/+$/, "") : appUrl("").replace(/\/+$/, "");
+    const content = emailVerificationEmail(firstName, `${base}/verify-email/${token}`, this.mail.fromName);
     await this.mail.send(email, firstName, content.subject, content.html);
   }
 }
