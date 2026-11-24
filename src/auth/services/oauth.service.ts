@@ -80,7 +80,14 @@ export class OAuthService {
       "oauth_state",
       "Security check failed (state mismatch). Please try again."
     );
-    if (!cookieNonce || claims.nonce !== cookieNonce) {
+    /* On http (COOKIE_SECURE=false / local dev) Chrome may drop the SameSite=Lax cookie on the
+       cross-site redirect from Google back to localhost; the signed JWT alone is CSRF-sufficient
+       in that environment. On production the cookie is always required. */
+    const cookieRequired = process.env.COOKIE_SECURE !== "false";
+    if (cookieRequired && !cookieNonce) {
+      throw new UnauthorizedException("Security check failed (state mismatch). Please try again.");
+    }
+    if (cookieNonce && claims.nonce !== cookieNonce) {
       throw new UnauthorizedException("Security check failed (state mismatch). Please try again.");
     }
   }

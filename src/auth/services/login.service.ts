@@ -121,7 +121,6 @@ export class LoginService {
       );
     }
 
-    const isTwoStep = !!input.loginToken;
     const user = await this.findLoginUser(input);
     if (!user) {
       await this.redis.set(ipKey, ipFailures + 1, IP_WINDOW_SECONDS);
@@ -150,7 +149,7 @@ export class LoginService {
         await this.userRepository.lock(userUID);
         await this.auditFailure(user.UserName, "Account locked - too many attempts", meta);
       }
-      throw new UnauthorizedException(isTwoStep ? "Incorrect password. Please try again." : "Invalid username or password.");
+      throw new UnauthorizedException("Incorrect password. Please try again.");
     }
 
     // Password expiry — force a change after 180 days (not for Google accounts)

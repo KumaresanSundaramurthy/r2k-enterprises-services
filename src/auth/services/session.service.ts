@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { randomBytes, randomUUID } from "crypto";
-import { TelegramNotifier } from "../../libraries/telegram/telegram-notifier";
 import { RedisService } from "../../common/redis/redis.service";
 import { UpstashService } from "../../common/redis/upstash.service";
 import { nowDateTime, parseDateTime, toInt } from "../../common/utils/php-compat";
@@ -81,17 +80,6 @@ export class SessionService {
 
     const redisKey = `${randomUUID()}-${userUID}`;
     await this.redis.set(redisKey, built.payload, ttl);
-
-    // TEMP DEBUG: verify write persisted and log connection details
-    const verifyRead = await this.redis.get(redisKey);
-    TelegramNotifier.alert("SessionService::createSession — write verify", {
-      key: redisKey,
-      written: String(!!verifyRead),
-      db: String(process.env.REDIS_DATABASE ?? "0 (default)"),
-      host: String(process.env.REDIS_HOST ?? "(not set)"),
-      port: String(process.env.REDIS_PORT ?? "6379 (default)"),
-      ttl: String(ttl),
-    });
 
     const { device } = meta;
     const deviceLabel = `${device.browser} / ${device.os} (${device.deviceType})`;
