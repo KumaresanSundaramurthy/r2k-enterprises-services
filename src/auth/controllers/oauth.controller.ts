@@ -120,8 +120,14 @@ export class OAuthController {
       if (!code) throw new HttpException(`${provider === "google" ? "Google" : "Facebook"} sign-in was cancelled or failed.`, 400);
       this.oauthService.verifyState(state, nonce);
       const result = await login(code);
-      this.withSessionCookie(res, result);
-      res.redirect(appUrl(nextStepPath(result)));
+      const path = nextStepPath(result);
+      if (result.token && result.expiresIn) {
+        // Cross-domain: pass token to CI3 via URL — login/accept sets the cookie there
+        const p = new URLSearchParams({ t: result.token, exp: String(result.expiresIn) });
+        res.redirect(appUrl(`login/accept?${p}&next=${encodeURIComponent(path)}`));
+      } else {
+        res.redirect(appUrl(path));
+      }
     } catch (err) {
       if (!(err instanceof HttpException)) this.logger.error(`${provider} sign-in failed: ${(err as Error).message}`);
       this.redirectToLogin(res, err instanceof HttpException ? err.message : "Sign-in failed. Please try again.");
