@@ -197,14 +197,25 @@ export class SessionService {
     await this.userRepository.clearSessionToken(userUID);
   }
 
-  private async writeUserCaches(userUID: number, orgToken: string, built: BuiltSession, user: ErpUserRow, ttl: number) {
+  private async writeUserCaches(userUID: number, orgToken: string, built: BuiltSession, user: ErpUserRow, ttl: number): Promise<void> {
     // The cached user row omits the password hash and the verification columns only this API selects.
     const { UserPassword: _password, OrgIsEmailVerified: _verified, OrgEmail: _orgEmail, ...userInfo } = user;
-    await this.redis.set(this.redis.userKey("menus", userUID, orgToken), built.menus, ttl);
-    await this.redis.set(this.redis.userKey("submenus", userUID, orgToken), built.subMenus, ttl);
-    await this.redis.set(this.redis.userKey("modules", userUID, orgToken), built.modules, ttl);
-    await this.redis.set(this.redis.userKey("permissions", userUID, orgToken), built.permissions, ttl);
-    await this.redis.set(this.redis.userKey("userinfo", userUID, orgToken), userInfo, ttl);
+    const entries: Array<{ key: string; value: unknown }> = [
+      { key: "menus",       value: built.menus },
+      { key: "submenus",    value: built.subMenus },
+      { key: "modules",     value: built.modules },
+      { key: "permissions", value: built.permissions },
+      { key: "userinfo",    value: userInfo },
+    ];
+    // allSettled so a single Redis failure does not block the remaining writes or fail login.
+    const results = await Promise.allSettled(
+      entries.map(({ key, value }) => this.redis.set(this.redis.userKey(key, userUID, orgToken), value, ttl))
+    );
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        this.logger.error(`writeUserCaches "${entries[i].key}" failed for uid=${userUID}: ${(r.reason as Error).message}`);
+      }
+    });
   }
 
   // Port of Login_model::formatJWTPayload. Menus, sub-menus and modules are cached separately, not in the payload.
@@ -223,7 +234,12 @@ export class SessionService {
         this.cached(this.redis.orgKey(`role-submenus-${roleUID}`, orgToken), ttl, () =>
           this.sessionData.getRoleSubMenus(roleUID, orgUID)
         ),
-        this.cached(this.redis.globalKey("global-modules"), 86400, () => this.sessionData.getModules()),
+        this.cached(this.redis.globalKey("global-modules"), 86400, () =>
+          this.sessionData.getModules().catch((err: Error) => {
+            this.logger.error(`getModules DB query failed: ${err.message}`);
+            return [] as DbRow[];
+          })
+        ),
         this.sessionData.getOrgGeneralSettings(orgUID),
         this.sessionData.getProductSettings(orgUID).catch(() => null),
         this.loadTransactionSettings(orgUID),
@@ -301,7 +317,7 @@ export class SessionService {
 
   private async cached<T>(key: string, ttl: number, load: () => Promise<T>): Promise<T> {
     const hit = await this.redis.get<T>(key);
-    if (hit !== null) return hit;
+    if (hit !== null && !(Array.isArray(hit) && hit.length === 0)) return hit;
     const value = await load();
     await this.redis.set(key, value, ttl);
     return value;
