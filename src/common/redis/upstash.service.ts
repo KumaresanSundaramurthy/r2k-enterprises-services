@@ -7,7 +7,7 @@ export class UpstashService {
 
   // JSON values come back decoded (CI3 json_decode($raw, true)); anything else is returned as stored.
   async get<T = unknown>(key: string): Promise<T | null> {
-    const raw = await this.command<string | null>(["GET", key]);
+    const raw = await this.command<string | null>(["GET", key], true);
     if (raw === null || raw === undefined) return null;
     try {
       return JSON.parse(raw) as T;
@@ -55,9 +55,11 @@ export class UpstashService {
   }
 
   // Cache failures never break a request: they are logged and treated as a miss.
-  private async command<T>(command: string[]): Promise<T | null> {
+  // readonly=true → UPSTASH_REDIS_REST_READONLY_TOKEN (falls back to read-write if unset)
+  private async command<T>(command: string[], readonly = false): Promise<T | null> {
     const url = (process.env.UPSTASH_REDIS_REST_URL || "").replace(/\/+$/, "");
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN || "";
+    const rwToken = process.env.UPSTASH_REDIS_REST_TOKEN || "";
+    const token = readonly ? (process.env.UPSTASH_REDIS_REST_READONLY_TOKEN || rwToken) : rwToken;
     if (!url || !token) return null;
 
     try {

@@ -104,7 +104,7 @@ export class CiBillingController {
   @ApiOperation({ summary: "Signup_model::getAvailablePlansForOrg — active plans for the org's sector" })
   async getAvailablePlans(@Query("orgUID") orgUID: string) {
     const rows = await this.billingOps.getAvailablePlansForOrg(Number(orgUID ?? 0));
-    return ciSuccess(rows);
+    return ciSuccess({ Data: rows });
   }
 
   @Post("applyPlanMenuFilter")

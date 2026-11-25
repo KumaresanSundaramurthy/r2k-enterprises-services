@@ -60,13 +60,28 @@ export class SubscriptionBillingService {
 
   /** Signup_model::getAvailablePlansForOrg — all active plans for an org's sector. */
   async getAvailablePlansForOrg(orgUID: number): Promise<Row[]> {
-    const rows = await erpKnexRead("Billing.SectorPlanTbl as SPT")
-      .join("Billing.SubscriptionPlansTbl as SP", "SP.PlanUID", "SPT.PlanUID")
-      .join("Organisation.OrganisationTbl as O", "O.SectorUID", "SPT.SectorUID")
-      .select("SPT.SectorPlanUID", "SPT.Price", "SPT.DurationDays", "SPT.MaxUsers", "SPT.MaxBranches", "SPT.TaxableAmount", "SPT.TaxAmount", "SPT.TotalAmount", "SP.PlanName", "SP.BillingCycle")
-      .where({ "O.OrgUID": orgUID, "SPT.IsActive": 1 })
-      .orderBy("SPT.Price", "asc");
-    return rows as Row[];
+    const orgRow = (await erpKnexRead("Organisation.OrganisationTbl")
+      .where({ OrgUID: orgUID })
+      .first("SectorUID")) as Row | undefined;
+    const sectorUID = toInt(orgRow?.SectorUID);
+
+    const planQuery = () =>
+      erpKnexRead("Billing.SectorPlanTbl as SPT")
+        .join("Billing.SubscriptionPlansTbl as SP", "SP.PlanUID", "SPT.PlanUID")
+        .select("SPT.SectorPlanUID", "SPT.Price", "SPT.DurationDays", "SPT.MaxUsers", "SPT.MaxBranches", "SPT.TaxableAmount", "SPT.TaxAmount", "SPT.TotalAmount", "SP.PlanName", "SP.BillingCycle")
+        .orderBy("SPT.Price", "asc");
+
+    if (sectorUID > 0) {
+      const rows = (await planQuery().where({ "SPT.SectorUID": sectorUID, "SPT.IsActive": 1 })) as Row[];
+      if (rows.length > 0) return rows;
+    }
+
+    /* Fallback 1: sector unset or has no active plans — all active plans across all sectors. */
+    const active = (await planQuery().where({ "SPT.IsActive": 1 })) as Row[];
+    if (active.length > 0) return active;
+
+    /* Fallback 2: no active plans at all — return every plan so the subscribe page is never blank. */
+    return (await planQuery()) as Row[];
   }
 
   /** Signup_model::applyPlanMenuFilter — batch-update IsActive on all 4 menu tables based on the plan's allowed modules. */

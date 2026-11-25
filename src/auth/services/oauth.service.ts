@@ -5,6 +5,7 @@ import { RequestMeta } from "../utils/device-info";
 import { apiUrl } from "../utils/app-url";
 import { AuthTokenService } from "./auth-token.service";
 import { LoginResult, LoginService } from "./login.service";
+import { SignupService } from "./signup.service";
 
 export type OAuthProvider = "google" | "facebook";
 
@@ -31,7 +32,8 @@ export class OAuthService {
   constructor(
     private readonly userRepository: ErpUserRepository,
     private readonly loginService: LoginService,
-    private readonly tokens: AuthTokenService
+    private readonly tokens: AuthTokenService,
+    private readonly signupService: SignupService
   ) {}
 
   callbackUrl(provider: OAuthProvider): string {
@@ -74,7 +76,7 @@ export class OAuthService {
     return { url: `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`, nonce };
   }
 
-  verifyState(state: string | undefined, cookieNonce: string | undefined): void {
+  verifyState(state: string | undefined, cookieNonce: string | undefined): { src: string } {
     const claims = this.tokens.verifyShortLived(
       state ?? "",
       "oauth_state",
@@ -90,9 +92,10 @@ export class OAuthService {
     if (cookieNonce && claims.nonce !== cookieNonce) {
       throw new UnauthorizedException("Security check failed (state mismatch). Please try again.");
     }
+    return { src: claims.src === "signup" ? "signup" : "login" };
   }
 
-  async loginWithGoogleCode(code: string, meta: RequestMeta): Promise<LoginResult> {
+  async loginWithGoogleCode(code: string, meta: RequestMeta, src = "login"): Promise<LoginResult> {
     const tokenData = await fetchJson("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -110,7 +113,7 @@ export class OAuthService {
     const profile = await fetchJson("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    return this.loginWithGoogleProfile(profile, meta);
+    return this.loginWithGoogleProfile(profile, meta, src);
   }
 
   // Token flow: verifies a Google ID token (Google Identity Services / mobile SDK).
@@ -161,21 +164,41 @@ export class OAuthService {
     return this.completeSocialLogin(profile.email, "FACEBOOK", meta);
   }
 
-  private async loginWithGoogleProfile(profile: Record<string, unknown>, meta: RequestMeta): Promise<LoginResult> {
+  private async loginWithGoogleProfile(profile: Record<string, unknown>, meta: RequestMeta, src = "login"): Promise<LoginResult> {
     if (typeof profile.email !== "string" || !profile.email) {
       throw new BadRequestException("Google did not return an email address. Please try again.");
     }
     if (profile.email_verified !== true && profile.email_verified !== "true") {
       throw new BadRequestException("Your Google email address is not verified. Please verify it and try again.");
     }
-    return this.completeSocialLogin(profile.email, "GOOGLE", meta);
+    return this.completeSocialLogin(profile.email, "GOOGLE", meta, src, profile);
   }
 
   // Oauth::_completeOAuthLogin. The provider has verified the email, so the org email check is skipped.
-  private async completeSocialLogin(email: string, provider: "GOOGLE" | "FACEBOOK", meta: RequestMeta): Promise<LoginResult> {
+  private async completeSocialLogin(
+    email: string,
+    provider: "GOOGLE" | "FACEBOOK",
+    meta: RequestMeta,
+    src = "login",
+    rawProfile?: Record<string, unknown>
+  ): Promise<LoginResult> {
     const matches = await this.userRepository.findLoginUsersByIdentifier(email);
     if (matches.length !== 1) {
-      // CI3 creates a new organisation here for Google; signup is not part of this API yet.
+      if (src === "signup" && provider === "GOOGLE" && rawProfile) {
+        const g = {
+          email,
+          sub: String(rawProfile.sub ?? ""),
+          given_name: String(rawProfile.given_name ?? ""),
+          family_name: String(rawProfile.family_name ?? ""),
+          picture: String(rawProfile.picture ?? ""),
+          locale: String(rawProfile.locale ?? ""),
+          hd: String(rawProfile.hd ?? ""),
+        };
+        const registered = await this.signupService.registerOrganisationViaGoogle(g, 0);
+        const user = await this.userRepository.findLoginUserByUID(registered.userUID);
+        if (!user) throw new NotFoundException("Account created but could not be loaded. Please sign in.");
+        return this.loginService.completeLogin(user, provider, email, meta);
+      }
       throw new NotFoundException(`No account found for ${email}. Please sign up first or contact your administrator.`);
     }
     const user = matches[0];

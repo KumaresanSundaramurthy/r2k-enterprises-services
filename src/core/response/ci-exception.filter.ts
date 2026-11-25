@@ -44,7 +44,7 @@ export class CiExceptionFilter implements ExceptionFilter {
 
     // Unexpected failures are logged in full and sent to Telegram (CI3 notifyError); the caller gets a safe
     // message instead of SQL/stack details.
-    this.logger.error(exception instanceof Error ? exception.stack ?? exception.message : String(exception));
+    this.logger.error(exception instanceof Error ? exception.stack ?? exception.message : JSON.stringify(exception));
     notifyRequestError(host, exception);
     res.status(HttpStatus.OK).json(ciError("Something went wrong. Please try again."));
   }

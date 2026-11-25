@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Allow } from "class-validator";
 import { Request } from "express";
@@ -35,6 +35,17 @@ export class SubscribeController {
     private readonly session: SessionService,
     private readonly billingOps: SubscriptionBillingService
   ) {}
+
+  /** Return available plans for the user's org — called directly from the subscribe page browser JS. */
+  @Get("availablePlans")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Available plans for the logged-in user's org sector" })
+  async availablePlans(@Req() req: Request) {
+    const { session } = await this._loadSession(req);
+    const orgUID = toInt(session.Org.OrgUID);
+    const plans = await this.billingOps.getAvailablePlansForOrg(orgUID);
+    return ciSuccess({ Data: plans });
+  }
 
   /** Store payment intent token in Redis; return redirect URL to checkout page. */
   @Post("preparePayment")

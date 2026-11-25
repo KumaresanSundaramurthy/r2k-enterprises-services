@@ -143,6 +143,14 @@ export class SignupService {
   async registerOrganisationViaGoogle(g: GoogleProfile, sectorPlanUID: number): Promise<{ orgUID: number; userUID: number; isPaidPlan: boolean }> {
     const now = nowDateTime();
     const email = g.email.toLowerCase();
+
+    /* Guard against race condition (double-click / parallel OAuth callbacks) — check before any INSERT
+       so we never burn an AUTO_INCREMENT value on a duplicate. */
+    const existing = await erpKnexRead("Users.UserTbl")
+      .where({ EmailAddress: email, IsDeleted: 0 })
+      .first("UserUID");
+    if (existing) throw new Error(`An account already exists for ${email}. Please sign in instead.`);
+
     const orgName = g.given_name || "Organisation";
     const shortCode = await this.generateShortCode(orgName);
     const orgToken = await this.generateOrgToken();
@@ -162,8 +170,14 @@ export class SignupService {
     }
     const plan = sectorPlanUID > 0 ? await this.getSectorPlan(sectorPlanUID) : null;
 
-    const { orgUID, userUID, subscription } = await erpKnexWrite.transaction(async (trx) => {
+    const { orgUID, userUID, roleUID, subscription } = await erpKnexWrite.transaction(async (trx) => {
       const insert = async (table: string, row: Record<string, unknown>) => toInt((await trx(table).insert(row))[0]);
+
+      /* Second race-condition guard — inside the transaction with a gap/next-key lock so a parallel
+         call that passed the outer read check is forced to wait until this transaction commits,
+         then it will find the row and exit before touching OrganisationTbl. */
+      const dup = await trx("Users.UserTbl").where({ EmailAddress: email, IsDeleted: 0 }).forUpdate().first("UserUID");
+      if (dup) throw new Error(`An account already exists for ${email}. Please sign in instead.`);
 
       const orgUID = await insert("Organisation.OrganisationTbl", {
         Name: orgName,
@@ -209,8 +223,6 @@ export class SignupService {
         UpdatedBy: 0,
       });
 
-      await this.insertDefaultSettings(trx, orgUID, shortCode);
-
       const role = (name: string, by: number) => ({ Name: name, OrgUID: orgUID, BranchUID: branchUID, IsDefault: 1, IsGlobal: 0, IsActive: 1, IsDeleted: 0, CreatedBy: by, UpdatedBy: by });
       const roleUID = await insert("UserRole.RolesTbl", role("Super Admin", 0));
 
@@ -253,9 +265,10 @@ export class SignupService {
       await trx("Users.UserBranchAccessTbl").insert({ UserUID: userUID, OrgUID: orgUID, BranchUID: branchUID, IsDefault: 1, IsActive: 1, CreatedBy: userUID });
 
       const subscription = await this.assignPlanSubscription(trx, orgUID, sectorPlanUID, plan);
-      await this.seedMenusFromSector(trx, orgUID, sectorUID, seedPlanUID, roleUID, userUID);
-      return { orgUID, userUID, subscription };
+      return { orgUID, userUID, roleUID, subscription };
     });
+
+    await this.seedMenusFromSector(erpKnexWrite, orgUID, sectorUID, seedPlanUID, roleUID, userUID);
 
     await this.runSignupSeed(orgUID, userUID, shortCode).catch((err) => {
       this.logger.error(`runSignupSeed threw unexpectedly: ${(err as Error).message}`);
@@ -303,7 +316,7 @@ export class SignupService {
       /* Add Settings. schema prefix + convert to INSERT IGNORE in one pass.
          Cannot use `USE Settings` — each erpKnexWrite.raw() may get a different
          pooled connection with no default database. */
-      .replace(/\bINSERT\s+INTO\s+`(\w+)`/gi, "INSERT IGNORE INTO `Settings`.`$1`");
+      .replace(/\bINSERT\s+(?:IGNORE\s+)?INTO\s+(?:`Settings`\.)?`(\w+)`/gi, "INSERT IGNORE INTO `Settings`.`$1`");
 
     /* Keep only statements that start with INSERT — strips comment-only chunks
        that the semicolon split produces from lines like "/* comment *\/;" */
@@ -323,35 +336,6 @@ export class SignupService {
         TelegramNotifier.error("SignupService::runSignupSeed — statement failed", err, { OrgUID: orgUID, Stmt: stmt.slice(0, 200) });
       }
     }
-  }
-
-  // OrgSettingsTbl defaults shared by both signups
-  private async insertDefaultSettings(trx: Knex.Transaction, orgUID: number, shortCode: string): Promise<void> {
-    await trx("Settings.OrgSettingsTbl").insert({
-      OrgSettingsUID: orgUID,
-      OrgUID: orgUID,
-      CurrenySymbol: "₹",
-      FYStartMonth: 4,
-      RowLimit: 10,
-      QtyMaxLength: 2,
-      SerialNoDisplay: 0,
-      EnableStorage: 0,
-      MandatoryStorage: 0,
-      MaxShippingAddr: 3,
-      FormDateFormat: "d-m-Y",
-      ListDateFormat: "d-m-Y",
-      PrintDateFormat: "d-m-Y",
-      FormDateTimeFormat: "d-m-Y h:i A",
-      ListDateTimeFormat: "d-m-Y h:i A",
-      PrintDateTimeFormat: "d-m-Y h:i A",
-      ShowStats: 0,
-      StatsDefaultOpen: 0,
-      EnableAIAssistant: "No",
-      TwoStepLogin: 1,
-      EmpCodePrefix: shortCode,
-      EmpCodeSeparator: "-",
-      EmpCodeDigits: 4,
-    });
   }
 
   private async validate(form: Form): Promise<void> {
@@ -494,7 +478,6 @@ export class SignupService {
         UpdatedBy: 0,
       });
 
-      await this.insertDefaultSettings(trx, orgUID, shortCode);
 
       const role = (name: string, by: number) => ({ Name: name, OrgUID: orgUID, BranchUID: branchUID, IsDefault: 1, IsGlobal: 0, IsActive: 1, IsDeleted: 0, CreatedBy: by, UpdatedBy: by });
       const roleUID = await insert("UserRole.RolesTbl", role("Super Admin", 0));
@@ -541,11 +524,14 @@ export class SignupService {
       await trx("Users.UserBranchAccessTbl").insert({ UserUID: userUID, OrgUID: orgUID, BranchUID: branchUID, IsDefault: 1, IsActive: 1, CreatedBy: userUID });
 
       const subscription = await this.assignPlanSubscription(trx, orgUID, sectorPlanUID, plan);
-      await this.seedMenusFromSector(trx, orgUID, sectorUID, seedPlanUID, roleUID, userUID);
-      return { orgUID, userUID, subscription };
+      return { orgUID, userUID, roleUID, subscription };
     });
 
-    const { orgUID, userUID, subscription } = result;
+    const { orgUID, userUID, roleUID, subscription } = result;
+
+    /* Seed menus outside the transaction — each INSERT is a TiDB round-trip (~150 ms); keeping them
+       inside the transaction held the connection for 10–20 s and caused CI3's 15 s proxy to time out. */
+    await this.seedMenusFromSector(erpKnexWrite, orgUID, sectorUID, seedPlanUID, roleUID, userUID);
 
     // Free plan: payment + invoice now, then FirstPaidOn
     if (!subscription.isPaid && subscription.orderUID > 0) {
@@ -622,7 +608,7 @@ export class SignupService {
   }
 
   // Signup_model::_seedMenusFromSector — the sector's menus copied to the org; the plan's modules decide which are active
-  private async seedMenusFromSector(trx: Knex.Transaction, orgUID: number, sectorUID: number, planUID: number, roleUID: number, userUID: number): Promise<void> {
+  private async seedMenusFromSector(trx: Knex.Transaction | Knex, orgUID: number, sectorUID: number, planUID: number, roleUID: number, userUID: number): Promise<void> {
     if (sectorUID <= 0) return;
 
     const allowed = new Set<number>();

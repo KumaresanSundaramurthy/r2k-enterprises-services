@@ -54,7 +54,7 @@ export class OAuthController {
     if (error) {
       return this.redirectToLogin(res, error === "access_denied" ? "Google sign-in was cancelled." : `Google returned an error: ${error}`);
     }
-    await this.finishRedirect("google", code, state, req, res, (c) => this.oauthService.loginWithGoogleCode(c, getRequestMeta(req)));
+    await this.finishRedirect("google", code, state, req, res, (c, src) => this.oauthService.loginWithGoogleCode(c, getRequestMeta(req), src));
   }
 
   @Post("google")
@@ -112,14 +112,14 @@ export class OAuthController {
     state: string | undefined,
     req: Request,
     res: Response,
-    login: (code: string) => Promise<LoginResult>
+    login: (code: string, src: string) => Promise<LoginResult>
   ) {
     const nonce = readCookie(req, STATE_COOKIE);
     res.clearCookie(STATE_COOKIE, { path: "/api/auth" });
     try {
       if (!code) throw new HttpException(`${provider === "google" ? "Google" : "Facebook"} sign-in was cancelled or failed.`, 400);
-      this.oauthService.verifyState(state, nonce);
-      const result = await login(code);
+      const { src } = this.oauthService.verifyState(state, nonce);
+      const result = await login(code, src);
       const path = nextStepPath(result);
       if (result.token && result.expiresIn) {
         // Cross-domain: pass token to CI3 via URL — login/accept sets the cookie there
