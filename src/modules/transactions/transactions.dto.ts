@@ -77,6 +77,12 @@ export class TransDownloadPdfDto extends OrgContextDto {
   @ApiPropertyOptional({ enum: ["A4", "A5", "Letter"], default: "A4" }) @Allow() paperSize?: string;
 }
 
+export class TransPdfBase64Dto extends OrgContextDto {
+  @ApiProperty({ type: Number }) @Allow() TransUID?: string | number;
+  @ApiProperty({ type: Number, example: 101 }) @Allow() ModuleUID?: string | number;
+  @ApiPropertyOptional({ enum: ["A4", "A5", "Letter"], default: "A4" }) @Allow() PaperSize?: string;
+}
+
 export class PrefixSaveDto extends OrgUserBranchContextDto {
   @ApiPropertyOptional({ type: Number, description: "Update / delete / set default: the prefix" }) @Allow() prePrefixUID?: string | number;
   @ApiPropertyOptional({ type: Number, description: "Add: the module (101 Quotation, 102 Sales Order, …)" }) @Allow() preModuleUID?: string | number;

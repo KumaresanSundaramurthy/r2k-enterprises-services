@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseFilters, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Allow } from "class-validator";
 import { Request } from "express";
@@ -324,6 +324,47 @@ export class SubscriptionController {
       .catch((err: unknown) => TelegramNotifier.error("SubscriptionController::confirmOrderPayment", err, { orgUID, orderUID }));
 
     return ciSuccess({ ok: true });
+  }
+
+  /* ── Dashboard data endpoints (browser-facing, CiJwtGuard) ── */
+
+  /**
+   * Current org subscription row — called from subscription dashboard on page load.
+   * @returns Subscription row or null
+   */
+  @Get("myPlan")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Current org subscription details (dashboard)" })
+  async getMyPlan(@Req() req: Request) {
+    const { session } = await this._loadSession(req);
+    const row = await this.billingPlan.getOrgSubscription(toInt(session.Org.OrgUID));
+    return ciSuccess({ Data: row ?? null });
+  }
+
+  /**
+   * Billing order history for the current org.
+   * @returns Last 10 orders with invoice info
+   */
+  @Get("myOrders")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Org billing order history (dashboard)" })
+  async getMyOrders(@Req() req: Request) {
+    const { session } = await this._loadSession(req);
+    const rows = await this.billingPlan.getOrderHistory(toInt(session.Org.OrgUID), 10);
+    return ciSuccess({ Data: rows });
+  }
+
+  /**
+   * Available subscription plans for the current org's sector.
+   * @returns Plan list for the Change Plan modal dropdown
+   */
+  @Get("myPlans")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Available plans for change-plan modal (dashboard)" })
+  async getMyPlans(@Req() req: Request) {
+    const { session } = await this._loadSession(req);
+    const rows = await this.billingPlan.getAvailablePlans(toInt(session.Org.OrgUID));
+    return ciSuccess({ Data: rows });
   }
 
   private async _loadSession(req: Request): Promise<{ session: ErpSessionPayload; sessionKey: string }> {

@@ -2,11 +2,14 @@ import { Injectable, Logger } from "@nestjs/common";
 import { FileUploadService } from "../../libraries/file-upload/file-upload.service";
 import { PdfRendererService } from "../../libraries/pdf-renderer/pdf-renderer.service";
 import { billingFy } from "../../core/utils/billing-fy";
+import { erpKnexRead, erpKnexWrite } from "../../config/erp-knex";
 
 export interface BillingInvoiceData {
   invoice_number: string;
   invoice_date?: string;
+  due_date?: string;
   financial_year?: string;
+  place_of_supply?: string;
   org_name?: string;
   gstin?: string;
   org_address1?: string;
@@ -33,6 +36,7 @@ interface SellerConfig {
   addr?: string;
   phone?: string;
   email?: string;
+  signature?: string;
 }
 
 @Injectable()
@@ -51,8 +55,11 @@ export class BillingService {
    */
   async generateAndUpload(data: BillingInvoiceData): Promise<string | null> {
     try {
-      const seller = await this._fetchSellerConfig();
-      const html = this._buildHtml(data, seller);
+      const [seller, template] = await Promise.all([
+        this._fetchSellerConfig(),
+        this._fetchInvoiceTemplate(),
+      ]);
+      const html = this._buildHtml(data, seller, template);
       const pdfBuffer = await this.pdfRenderer.render(html, { paperSize: "A4" });
       return await this._uploadToR2(pdfBuffer, data);
     } catch (err) {
@@ -64,260 +71,171 @@ export class BillingService {
   /* ── HTML template ─────────────────────────────────────────────────────── */
 
   /**
-   * @param d       Invoice data
-   * @param seller  Seller config fetched from R2
-   * @returns Full HTML string for the invoice
+   * Fetches the invoice_template.html from Cloudflare R2 and fills all
+   * {{PLACEHOLDER}} tokens with real invoice data.
+   * @param d        Invoice data
+   * @param seller   Seller config fetched from R2
+   * @param template Raw HTML from R2 (invoice_template.html)
+   * @returns Filled HTML string ready for PDF rendering
    */
-  private _buildHtml(d: BillingInvoiceData, seller: SellerConfig): string {
-    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  private _buildHtml(d: BillingInvoiceData, seller: SellerConfig, template: string): string {
+    const esc = (v: string) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-    const invoiceNumber = esc(d.invoice_number ?? "");
-    const invoiceDate = d.invoice_date ? this._formatDate(d.invoice_date) : this._formatDate(new Date().toISOString().slice(0, 10));
-    const fy = esc(d.financial_year ?? "");
+    const invoiceDate   = this._formatDate(d.invoice_date ?? new Date().toISOString().slice(0, 10));
+    const dueDate       = d.due_date ? this._formatDate(d.due_date) : invoiceDate;
+    const fmtNum        = (v: number | string | undefined) =>
+      Number(v ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const taxRateNum    = Number(d.tax_rate ?? 18);
+    const taxRateFmt    = taxRateNum % 1 === 0 ? String(taxRateNum) : taxRateNum.toFixed(1);
+    const totalNum      = Number(d.total_amount ?? 0);
 
-    const orgName = esc(d.org_name ?? "");
-    const gstin = esc(d.gstin ?? "");
     const addr1 = esc(d.org_address1 ?? "");
     const addr2 = esc(d.org_address2 ?? "");
-    const city = esc(d.org_city ?? "");
+    const city  = esc(d.org_city ?? "");
     const state = esc(d.org_state ?? "");
-    const pincode = esc(d.org_pincode ?? "");
-    const phone = esc(d.org_phone ?? "");
-    const email = esc(d.org_email ?? "");
-
-    const planName = esc(d.plan_name ?? "");
-    const billingCycle = esc(d.billing_cycle ?? "");
-    const renewalType = esc(d.renewal_type ?? "Renewal");
-
-    const fmt = (v: number | string | undefined) => Number(v ?? 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    const taxableAmt = fmt(d.taxable_amount);
-    const taxRate = fmt(d.tax_rate);
-    const taxAmt = fmt(d.tax_amount);
-    const totalAmt = fmt(d.total_amount);
-
-    const addressParts = [addr1, addr2, city, state, pincode].filter(Boolean);
-    const addressHtml = addressParts.join("<br>");
+    const pin   = esc(d.org_pincode ?? "");
+    const billingAddr = [addr1, addr2, [city, state].filter(Boolean).join(", "), pin].filter(Boolean).join("<br>");
 
     const sellerName = esc(seller.name ?? "");
-    const sellerGstin = esc(seller.gstin ?? "");
-    const sellerAddr = esc(seller.addr ?? "").replace(/\n/g, "<br>");
-    const sellerPhone = esc(seller.phone ?? "");
-    const sellerEmail = esc(seller.email ?? "");
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 12px;
-      color: #1a1a2e;
-      background: #fff;
-      padding: 32px 36px;
-  }
-  .inv-header {
-      border-bottom: 3px solid #1a1a2e;
-      padding-bottom: 16px;
-      margin-bottom: 20px;
-  }
-  .inv-header table { width: 100%; }
-  .inv-title {
-      font-size: 26px;
-      font-weight: bold;
-      letter-spacing: 2px;
-      color: #1a1a2e;
-  }
-  .inv-badge {
-      display: inline-block;
-      background: #1a1a2e;
-      color: #fff;
-      padding: 3px 10px;
-      border-radius: 3px;
-      font-size: 10px;
-      letter-spacing: 1px;
-      margin-top: 4px;
-  }
-  .inv-meta { text-align: right; line-height: 1.7; }
-  .inv-meta .label { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .inv-meta .value { font-weight: bold; font-size: 13px; }
-  .inv-meta .fy { font-size: 10px; color: #888; }
-  .parties { width: 100%; margin-bottom: 20px; }
-  .parties td { width: 50%; vertical-align: top; }
-  .party-box {
-      background: #f7f8fc;
-      border: 1px solid #e0e4ef;
-      border-radius: 4px;
-      padding: 12px 14px;
-  }
-  .party-box.right { margin-left: 8px; }
-  .party-label {
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #888;
-      margin-bottom: 6px;
-  }
-  .party-name { font-size: 13px; font-weight: bold; margin-bottom: 4px; }
-  .party-detail { font-size: 11px; color: #444; line-height: 1.6; }
-  .party-gstin { font-size: 10px; color: #666; margin-top: 4px; }
-  .inv-items { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-  .inv-items thead tr { background: #1a1a2e; color: #fff; }
-  .inv-items thead th {
-      padding: 8px 10px;
-      text-align: left;
-      font-size: 11px;
-      letter-spacing: 0.5px;
-  }
-  .inv-items thead th.right { text-align: right; }
-  .inv-items tbody td {
-      padding: 10px 10px;
-      border-bottom: 1px solid #e8ebf4;
-      font-size: 11px;
-      vertical-align: top;
-  }
-  .inv-items tbody td.right { text-align: right; }
-  .inv-items tbody tr:nth-child(even) td { background: #fafbfe; }
-  .totals-wrap { width: 100%; }
-  .totals-wrap td.spacer { width: 55%; }
-  .totals-table { width: 45%; border-collapse: collapse; }
-  .totals-table tr td { padding: 5px 8px; font-size: 11px; }
-  .totals-table tr td.lbl { color: #555; }
-  .totals-table tr td.amt { text-align: right; }
-  .totals-table tr.total-row td {
-      border-top: 2px solid #1a1a2e;
-      padding-top: 8px;
-      font-size: 13px;
-      font-weight: bold;
-  }
-  .totals-table tr.sub-row td { border-bottom: 1px solid #eee; }
-  .inv-footer {
-      margin-top: 28px;
-      border-top: 1px solid #dde0ec;
-      padding-top: 14px;
-      font-size: 10px;
-      color: #888;
-      text-align: center;
-      line-height: 1.7;
-  }
-  .inv-footer strong { color: #444; }
-  .paid-stamp {
-      display: inline-block;
-      border: 3px solid #16a34a;
-      color: #16a34a;
-      padding: 4px 16px;
-      font-size: 16px;
-      font-weight: bold;
-      letter-spacing: 3px;
-      border-radius: 4px;
-      transform: rotate(-8deg);
-      float: right;
-      margin-top: -36px;
-      margin-right: 8px;
-  }
-</style>
-</head>
-<body>
+    const tokens: Record<string, string> = {
+      SELLER_NAME:       sellerName,
+      SELLER_NAME_UPPER: sellerName.toUpperCase(),
+      SELLER_GSTIN:      esc(seller.gstin ?? ""),
+      SELLER_ADDR:       esc(seller.addr ?? "").replace(/\n/g, "<br>"),
+      SELLER_PHONE:      esc(seller.phone ?? ""),
+      SELLER_EMAIL:      esc(seller.email ?? ""),
+      SELLER_SIGNATURE:  seller.signature
+        ? `<img src="${esc(seller.signature)}" style="max-height:48px;max-width:160px;display:block;">`
+        : "",
+      INVOICE_NUMBER:    esc(d.invoice_number ?? ""),
+      INVOICE_DATE:      invoiceDate,
+      DUE_DATE:          dueDate,
+      FINANCIAL_YEAR:    esc(d.financial_year ?? ""),
+      PLACE_OF_SUPPLY:   esc(d.place_of_supply ?? (d.org_state ?? "")),
+      ORG_NAME:          esc(d.org_name ?? ""),
+      ORG_GSTIN:         esc(d.gstin ?? ""),
+      ORG_PHONE:         esc(d.org_phone ?? ""),
+      ORG_EMAIL:         esc(d.org_email ?? ""),
+      BILLING_ADDR:      billingAddr,
+      PLAN_NAME:         esc(d.plan_name ?? ""),
+      BILLING_CYCLE:     esc(d.billing_cycle ?? ""),
+      RENEWAL_TYPE:      esc(d.renewal_type ?? "New"),
+      HSN_CODE:          "998314",
+      TAXABLE_AMOUNT:    fmtNum(d.taxable_amount),
+      TAX_RATE:          taxRateFmt,
+      TAX_AMOUNT:        fmtNum(d.tax_amount),
+      TOTAL_AMOUNT:      fmtNum(d.total_amount),
+      AMOUNT_IN_WORDS:   this._amountInWords(totalNum),
+    };
 
-<div class="inv-header">
-  <table>
-    <tr>
-      <td>
-        <div class="inv-title">INVOICE</div>
-        <div class="inv-badge">SUBSCRIPTION</div>
-      </td>
-      <td class="inv-meta">
-        <div class="label">Invoice Number</div>
-        <div class="value">${invoiceNumber}</div>
-        <div class="fy">FY ${fy}</div>
-        <br>
-        <div class="label">Invoice Date</div>
-        <div class="value">${invoiceDate}</div>
-      </td>
-    </tr>
-  </table>
-</div>
+    return template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key: string) => tokens[key] ?? "");
+  }
 
-<table class="parties">
-  <tr>
-    <td>
-      <div class="party-box">
-        <div class="party-label">Billed By</div>
-        <div class="party-name">${sellerName}</div>
-        <div class="party-detail">${sellerAddr}</div>
-        <div class="party-detail">${sellerPhone} &nbsp;|&nbsp; ${sellerEmail}</div>
-        <div class="party-gstin">GSTIN: ${sellerGstin}</div>
-      </div>
-    </td>
-    <td>
-      <div class="party-box right">
-        <div class="party-label">Billed To</div>
-        <div class="party-name">${orgName}</div>
-        <div class="party-detail">${addressHtml}</div>
-        <div class="party-detail">${phone}</div>
-        <div class="party-detail">${email}</div>
-        <div class="party-gstin">GSTIN: ${gstin}</div>
-      </div>
-    </td>
-  </tr>
-</table>
+  /** Convert a number to Indian rupees in words. */
+  private _amountInWords(amount: number): string {
+    const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+                  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+                  "Seventeen", "Eighteen", "Nineteen"];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
 
-<table class="inv-items">
-  <thead>
-    <tr>
-      <th style="width:5%">#</th>
-      <th style="width:40%">Description</th>
-      <th style="width:20%">Type</th>
-      <th class="right" style="width:17%">Base Amount</th>
-      <th class="right" style="width:18%">Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>1</td>
-      <td>
-        <strong>${planName}</strong>
-        <br><span style="color:#666;font-size:10px;">${billingCycle} Subscription</span>
-      </td>
-      <td>${renewalType}</td>
-      <td class="right">&#8377; ${taxableAmt}</td>
-      <td class="right">&#8377; ${totalAmt}</td>
-    </tr>
-  </tbody>
-</table>
+    const toWords = (n: number): string => {
+      if (n === 0) return "";
+      if (n < 20) return ones[n] + " ";
+      if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "") + " ";
+      if (n < 1000) return ones[Math.floor(n / 100)] + " Hundred " + toWords(n % 100);
+      if (n < 100000) return toWords(Math.floor(n / 1000)) + "Thousand " + toWords(n % 1000);
+      if (n < 10000000) return toWords(Math.floor(n / 100000)) + "Lakh " + toWords(n % 100000);
+      return toWords(Math.floor(n / 10000000)) + "Crore " + toWords(n % 10000000);
+    };
 
-<table class="totals-wrap">
-  <tr>
-    <td class="spacer">
-      <div class="paid-stamp">PAID</div>
-    </td>
-    <td>
-      <table class="totals-table">
-        <tr class="sub-row">
-          <td class="lbl">Taxable Amount</td>
-          <td class="amt">&#8377; ${taxableAmt}</td>
-        </tr>
-        <tr class="sub-row">
-          <td class="lbl">GST @ ${taxRate}%</td>
-          <td class="amt">&#8377; ${taxAmt}</td>
-        </tr>
-        <tr class="total-row">
-          <td class="lbl">Total</td>
-          <td class="amt">&#8377; ${totalAmt}</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
+    const rupees = Math.floor(amount);
+    const paise  = Math.round((amount - rupees) * 100);
+    let result   = "INR " + (toWords(rupees).trim() || "Zero") + " Rupees";
+    if (paise > 0) result += " And " + toWords(paise).trim() + " Paise";
+    result += " Only";
+    return result;
+  }
 
-<div class="inv-footer">
-  <strong>This is a computer-generated invoice and does not require a signature.</strong><br>
-  For queries, contact ${sellerEmail} &nbsp;|&nbsp; ${sellerPhone}
-</div>
+  /* ── Invoice regeneration ───────────────────────────────────────────────── */
 
-</body>
-</html>`;
+  /**
+   * Re-generates an invoice PDF using the latest template and re-uploads to R2.
+   * All source data is read from SubscriptionInvoicesTbl (snapshot stored at invoice creation).
+   * @param invoiceUID  SubscriptionInvoicesTbl.InvoiceUID
+   * @param orgUID      Org scope guard — must match the order's OrgUID
+   * @returns New R2 URL on success, null on failure
+   */
+  async regenerateInvoicePdf(invoiceUID: number, orgUID: number): Promise<string | null> {
+    type Row = Record<string, unknown>;
+    const row = (await erpKnexRead("Billing.SubscriptionInvoicesTbl as SI")
+      .join("Billing.SubscriptionOrdersTbl as SO", "SO.OrderUID", "SI.OrderUID")
+      .leftJoin("Billing.SectorPlanTbl as SPT", "SPT.SectorPlanUID", "SO.SectorPlanUID")
+      .leftJoin("Billing.SubscriptionPlansTbl as SP", "SP.PlanUID", "SPT.PlanUID")
+      .select(
+        "SI.InvoiceUID", "SI.InvoiceNumber", "SI.InvoiceDate", "SI.FinancialYear",
+        "SI.OrgName", "SI.GSTIN", "SI.OrgAddress1", "SI.OrgAddress2",
+        "SI.OrgCity", "SI.OrgState", "SI.OrgPincode", "SI.OrgPhone", "SI.OrgEmail",
+        "SI.TaxableAmount", "SI.TaxRate", "SI.TaxAmount", "SI.TotalAmount",
+        "SO.OrderUID", "SO.RenewalType",
+        erpKnexRead.raw("COALESCE(SP.BillingCycle, '') AS BillingCycle"),
+        erpKnexRead.raw("COALESCE(SP.PlanName, '') AS PlanName"),
+      )
+      .where({ "SI.InvoiceUID": invoiceUID, "SO.OrgUID": orgUID })
+      .first()) as Row | undefined;
+
+    if (!row) return null;
+
+    const str  = (k: string) => String(row[k] ?? "");
+    const num  = (k: string) => Number(row[k] ?? 0);
+
+    const pdfUrl = await this.generateAndUpload({
+      invoice_number:  str("InvoiceNumber"),
+      invoice_date:    str("InvoiceDate").slice(0, 10),
+      financial_year:  str("FinancialYear"),
+      org_name:        str("OrgName"),
+      gstin:           str("GSTIN"),
+      org_address1:    str("OrgAddress1"),
+      org_address2:    str("OrgAddress2"),
+      org_city:        str("OrgCity"),
+      org_state:       str("OrgState"),
+      org_pincode:     str("OrgPincode"),
+      org_phone:       str("OrgPhone"),
+      org_email:       str("OrgEmail"),
+      plan_name:       str("PlanName"),
+      billing_cycle:   str("BillingCycle"),
+      renewal_type:    str("RenewalType") || "New",
+      taxable_amount:  num("TaxableAmount"),
+      tax_rate:        num("TaxRate"),
+      tax_amount:      num("TaxAmount"),
+      total_amount:    num("TotalAmount"),
+      order_uid:       num("OrderUID"),
+      org_uid:         orgUID,
+    });
+
+    if (pdfUrl) {
+      await erpKnexWrite("Billing.SubscriptionInvoicesTbl")
+        .where({ InvoiceUID: invoiceUID })
+        .update({ PDFPath: pdfUrl });
+    }
+    return pdfUrl;
+  }
+
+  /* ── Invoice lookup (for browser download) ──────────────────────────────── */
+
+  /**
+   * Returns InvoiceNumber + PDFPath for a given invoice, scoped to the org.
+   * @param invoiceUID  SubscriptionInvoicesTbl.InvoiceUID
+   * @param orgUID      Must match the order's OrgUID to prevent cross-org access
+   */
+  async getInvoicePdfPath(invoiceUID: number, orgUID: number): Promise<{ InvoiceNumber: string; PDFPath: string } | null> {
+    type Row = { InvoiceNumber: string; PDFPath: string };
+    const row = (await erpKnexRead("Billing.SubscriptionInvoicesTbl as SI")
+      .join("Billing.SubscriptionOrdersTbl as SO", "SO.OrderUID", "SI.OrderUID")
+      .select("SI.InvoiceNumber", "SI.PDFPath")
+      .where({ "SI.InvoiceUID": invoiceUID, "SO.OrgUID": orgUID })
+      .first()) as Row | undefined;
+    return row ?? null;
   }
 
   /* ── Upload to Cloudflare R2 ─────────────────────────────────────────────── */
@@ -336,7 +254,7 @@ export class BillingService {
     return result.FullPath;
   }
 
-  /* ── Seller config ─────────────────────────────────────────────────────── */
+  /* ── R2 assets ─────────────────────────────────────────────────────────── */
 
   /**
    * Fetch seller config JSON from Cloudflare R2 CDN.
@@ -353,6 +271,22 @@ export class BillingService {
       return (await res.json()) as SellerConfig;
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Fetch invoice_template.html from Cloudflare R2 CDN.
+   * Falls back to an empty string on failure — _buildHtml handles it gracefully.
+   * @returns Raw HTML template string with {{PLACEHOLDER}} tokens
+   */
+  private async _fetchInvoiceTemplate(): Promise<string> {
+    try {
+      const url = "https://pub-bb40942a33344637936ade1f3800ff8b.r2.dev/Global/invoice_template.html";
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return "";
+      return await res.text();
+    } catch {
+      return "";
     }
   }
 

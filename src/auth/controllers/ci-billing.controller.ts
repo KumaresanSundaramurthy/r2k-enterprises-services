@@ -260,4 +260,5 @@ export class CiBillingController {
     const result = await this.billingPlan.checkAndActivateScheduledPlan(Number(dto.orgUID));
     return ciSuccess(result);
   }
+
 }

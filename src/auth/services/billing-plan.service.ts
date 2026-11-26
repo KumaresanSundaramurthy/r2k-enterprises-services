@@ -310,8 +310,8 @@ export class BillingPlanService {
 
     /* 4. Update OrgSubscriptionTbl */
     await erpKnexWrite.raw(
-      "UPDATE Billing.OrgSubscriptionTbl SET SectorPlanUID=?, FinancialYear=?, StartDate=?, EndDate=?, Status='Active' WHERE OrgUID=? AND Status NOT IN ('Cancelled') ORDER BY StartDate DESC LIMIT 1",
-      [newSectorPlanUID, fyValue, now, endDate, orgUID]
+      "UPDATE Billing.OrgSubscriptionTbl SET SectorPlanUID=?, FinancialYear=?, StartDate=?, EndDate=?, Status='Active', UpdatedBy=?, UpdatedOn=? WHERE OrgUID=? AND Status NOT IN ('Cancelled') ORDER BY StartDate DESC LIMIT 1",
+      [newSectorPlanUID, fyValue, now, endDate, userUID || null, now, orgUID]
     );
 
     /* 5. Get OrgSubUID after update */

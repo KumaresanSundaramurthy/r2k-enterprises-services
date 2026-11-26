@@ -26,6 +26,7 @@ import {
   TransDetailDto,
   TransDownloadPdfDto,
   TransListDto,
+  TransPdfBase64Dto,
 } from "./transactions.dto";
 
 // CI3 Packinglists $pageModuleUID
@@ -99,6 +100,33 @@ export class TransactionsController {
     const filename = `${String(result.header.UniqueNumber || `Trans_${uid}`).replace(/[^a-zA-Z0-9_\-\.]/g, "_")}.pdf`;
     res.set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "private, max-age=0, must-revalidate" });
     return new StreamableFile(result.bytes);
+  }
+
+  @Post("getTransactionPdfBase64")
+  @HttpCode(HttpStatus.OK)
+  @AcceptForm()
+  @ApiOperation({ summary: "Return a transaction A4 PDF as base64 (for email auto-attach). Response: { Error, Base64, Filename, Size }" })
+  async getTransactionPdfBase64(@Body() dto: TransPdfBase64Dto) {
+    const transUID  = postInt(dto, "TransUID");
+    const moduleUID = postInt(dto, "ModuleUID");
+    const paperSize = String(dto.PaperSize || "A4").toUpperCase();
+
+    if (transUID <= 0 || moduleUID <= 0) {
+      return { Error: true, Message: "Invalid transaction or module." };
+    }
+
+    const result = await this.print.pdf(dto.orgId, transUID, moduleUID, paperSize);
+    if (!result) {
+      return { Error: true, Message: "Transaction not found." };
+    }
+
+    const filename = `${String(result.header.UniqueNumber || `Trans_${transUID}`).replace(/[^a-zA-Z0-9_\-\.]/g, "_")}.pdf`;
+    return {
+      Error:    false,
+      Base64:   result.bytes.toString("base64"),
+      Filename: filename,
+      Size:     result.bytes.length,
+    };
   }
 
   @Get("getAttachments")

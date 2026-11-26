@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Montserrat',Arial,Helvetica,sans-serif; font-size:11px; color:#111; background:#fff; padding:24px; }
+  .wrap { border:1px solid #333; width:100%; }
+
+  .title-row { display:flex; justify-content:space-between; align-items:center;
+               border-bottom:1px solid #333; padding:7px 10px; }
+  .title-row .tax-inv { font-size:15px; font-weight:700; letter-spacing:2px; color:#1a56db; }
+  .title-row .orig    { font-size:9px; letter-spacing:1px; color:#333; }
+
+  .seller-meta { display:flex; border-bottom:1px solid #333; }
+  .seller-block { flex:1; padding:10px; border-right:1px solid #333; }
+  .seller-block .co-name { font-size:13px; font-weight:700; margin-bottom:3px; }
+  .seller-block .gstin   { font-weight:600; font-size:10px; margin-bottom:3px; }
+  .seller-block .detail  { font-size:10px; line-height:1.6; color:#333; }
+  .meta-grid { width:260px; flex-shrink:0; }
+  .meta-grid table { width:100%; border-collapse:collapse; height:100%; }
+  .meta-grid td { padding:5px 8px; font-size:10px; border-bottom:1px solid #ccc; vertical-align:top; }
+  .meta-grid .lbl { color:#555; white-space:nowrap; }
+  .meta-grid .val { font-weight:600; padding-left:4px; }
+
+  .cust-row { display:flex; border-bottom:1px solid #333; }
+  .cust-block { flex:1; padding:10px; border-right:1px solid #333; }
+  .cust-block .cust-lbl   { font-size:9px; font-weight:700; margin-bottom:4px; }
+  .cust-block .cust-name  { font-weight:700; font-size:12px; margin-bottom:3px; }
+  .cust-block .cust-detail{ font-size:10px; line-height:1.6; color:#333; }
+  .ship-block { flex:1; padding:10px; }
+  .ship-block .ship-lbl   { font-size:9px; font-weight:700; margin-bottom:4px; }
+  .ship-block .ship-detail{ font-size:10px; line-height:1.6; color:#333; }
+
+  .items-tbl { width:100%; border-collapse:collapse; border-bottom:1px solid #333; }
+  .items-tbl th { background:#f5f5f5; border:1px solid #bbb; padding:6px 7px;
+                  font-size:10px; text-align:left; font-weight:700; }
+  .items-tbl th.r { text-align:right; }
+  .items-tbl td { border:1px solid #ddd; padding:7px; font-size:10px; vertical-align:top; }
+  .items-tbl td.r { text-align:right; }
+
+  .totals-row { display:flex; border-bottom:1px solid #333; }
+  .totals-left  { flex:1; padding:7px 10px; font-size:10px; border-right:1px solid #333;
+                  display:flex; align-items:flex-end; }
+  .totals-right { width:340px; flex-shrink:0; }
+  .totals-right table { width:100%; border-collapse:collapse; }
+  .totals-right td { padding:5px 8px; font-size:10px; border-bottom:1px solid #eee; }
+  .totals-right .lbl { color:#555; }
+  .totals-right .amt { text-align:right; }
+  .totals-right .grand td { font-size:13px; font-weight:700; border-top:2px solid #333;
+                             border-bottom:none; padding-top:7px; }
+
+  .words-row { padding:7px 10px; font-size:10px; border-bottom:1px solid #333; }
+
+  .hsn-tbl { width:100%; border-collapse:collapse; border-bottom:1px solid #333; }
+  .hsn-tbl th { background:#f5f5f5; border:1px solid #bbb; padding:5px 7px; font-size:10px; font-weight:700; }
+  .hsn-tbl th.r { text-align:right; }
+  .hsn-tbl td { border:1px solid #ddd; padding:5px 7px; font-size:10px; }
+  .hsn-tbl td.r { text-align:right; }
+  .hsn-tbl .foot td { font-weight:700; background:#fafafa; }
+
+  .paid-row { text-align:right; padding:6px 10px; border-bottom:1px solid #333; }
+  .paid-badge { display:inline-flex; align-items:center; gap:5px; background:#dcfce7;
+                color:#15803d; border:1px solid #86efac; border-radius:4px;
+                padding:3px 10px; font-size:10px; font-weight:700; }
+
+  .sign-row { display:flex; border-bottom:1px solid #333; }
+  .sign-block { flex:1; padding:10px; }
+  .sign-block .sign-lbl { font-size:9px; font-weight:700; color:#555; margin-bottom:6px; }
+  .sign-space { height:48px; }
+  .sign-block .auth-lbl { font-size:10px; color:#333; }
+
+  .nt-row { display:flex; border-bottom:1px solid #333; }
+  .notes-block { flex:1; padding:10px; border-right:1px solid #333; font-size:10px; }
+  .terms-block { flex:1; padding:10px; font-size:10px; }
+  .nt-row .sec-lbl { font-weight:700; margin-bottom:4px; }
+
+  .page-foot { padding:6px 10px; font-size:9px; color:#555;
+               display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Title -->
+  <div class="title-row">
+    <span class="tax-inv">TAX INVOICE</span>
+    <span class="orig">ORIGINAL FOR RECIPIENT</span>
+  </div>
+
+  <!-- Seller + Invoice Meta -->
+  <div class="seller-meta">
+    <div class="seller-block">
+      <div class="co-name">{{SELLER_NAME}}</div>
+      <div class="gstin">GSTIN {{SELLER_GSTIN}}</div>
+      <div class="detail">{{SELLER_ADDR}}</div>
+      <div class="detail">Mobile {{SELLER_PHONE}}</div>
+      <div class="detail">Email {{SELLER_EMAIL}}</div>
+    </div>
+    <div class="meta-grid">
+      <table>
+        <tr><td class="lbl">Invoice #:</td><td class="val">{{INVOICE_NUMBER}}</td></tr>
+        <tr><td class="lbl">Invoice Date:</td><td class="val">{{INVOICE_DATE}}</td></tr>
+        <tr><td class="lbl">Place of Supply:</td><td class="val">{{PLACE_OF_SUPPLY}}</td></tr>
+        <tr><td class="lbl">Due Date:</td><td class="val">{{DUE_DATE}}</td></tr>
+        <tr><td class="lbl">Financial Year:</td><td class="val">{{FINANCIAL_YEAR}}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Customer / Billing -->
+  <div class="cust-row">
+    <div class="cust-block">
+      <div class="cust-lbl">Customer Details:</div>
+      <div class="cust-name">{{ORG_NAME}}</div>
+      <div class="cust-detail">Billing address:<br>{{BILLING_ADDR}}</div>
+      <div class="cust-detail">Ph: {{ORG_PHONE}}</div>
+      <div class="cust-detail" style="margin-top:3px;">GSTIN: {{ORG_GSTIN}}</div>
+    </div>
+    <div class="ship-block">
+      <div class="ship-lbl">Shipping address:</div>
+      <div class="ship-detail">{{BILLING_ADDR}}</div>
+      <div class="ship-detail" style="margin-top:4px;">Email: {{ORG_EMAIL}}</div>
+    </div>
+  </div>
+
+  <!-- Items -->
+  <table class="items-tbl">
+    <thead>
+      <tr>
+        <th style="width:4%">#</th>
+        <th style="width:34%">Item</th>
+        <th style="width:10%">HSN/SAC</th>
+        <th class="r" style="width:13%">Rate / Item</th>
+        <th class="r" style="width:7%">Qty</th>
+        <th class="r" style="width:13%">Taxable Value</th>
+        <th class="r" style="width:11%">Tax Amount</th>
+        <th class="r" style="width:8%">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>
+          <strong>{{PLAN_NAME}}</strong><br>
+          <span style="color:#555;">{{BILLING_CYCLE}} Subscription &mdash; {{RENEWAL_TYPE}}</span>
+        </td>
+        <td>{{HSN_CODE}}</td>
+        <td class="r">&#8377;&nbsp;{{TAXABLE_AMOUNT}}</td>
+        <td class="r">1</td>
+        <td class="r">&#8377;&nbsp;{{TAXABLE_AMOUNT}}</td>
+        <td class="r">&#8377;&nbsp;{{TAX_AMOUNT}}<br><span style="color:#777;">({{TAX_RATE}}%)</span></td>
+        <td class="r">&#8377;&nbsp;{{TOTAL_AMOUNT}}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <div class="totals-row">
+    <div class="totals-left">Total Items / Qty : 1 / 1.000</div>
+    <div class="totals-right">
+      <table>
+        <tr><td class="lbl">Taxable Amount</td><td class="amt">&#8377;&nbsp;{{TAXABLE_AMOUNT}}</td></tr>
+        <tr><td class="lbl">IGST {{TAX_RATE}}%</td><td class="amt">&#8377;&nbsp;{{TAX_AMOUNT}}</td></tr>
+        <tr class="grand"><td class="lbl">Total</td><td class="amt">&#8377;&nbsp;{{TOTAL_AMOUNT}}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Amount in words -->
+  <div class="words-row">
+    Total amount (in words): <strong>{{AMOUNT_IN_WORDS}}</strong>
+  </div>
+
+  <!-- HSN Summary -->
+  <table class="hsn-tbl">
+    <thead>
+      <tr>
+        <th>HSN/SAC</th>
+        <th class="r">Taxable Value</th>
+        <th colspan="2" style="text-align:center;">Integrated Tax</th>
+        <th class="r">Total Tax Amount</th>
+      </tr>
+      <tr>
+        <th></th><th></th>
+        <th class="r">Rate</th>
+        <th class="r">Amount</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{HSN_CODE}}</td>
+        <td class="r">{{TAXABLE_AMOUNT}}</td>
+        <td class="r">{{TAX_RATE}}%</td>
+        <td class="r">{{TAX_AMOUNT}}</td>
+        <td class="r">{{TAX_AMOUNT}}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr class="foot">
+        <td>TOTAL</td>
+        <td class="r">{{TAXABLE_AMOUNT}}</td>
+        <td class="r">{{TAX_RATE}}%</td>
+        <td class="r">{{TAX_AMOUNT}}</td>
+        <td class="r">{{TAX_AMOUNT}}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- Amount Paid badge -->
+  <div class="paid-row">
+    <span class="paid-badge">&#10003;&nbsp;Amount Paid</span>
+  </div>
+
+  <!-- Signatory -->
+  <div class="sign-row">
+    <div class="sign-block" style="border-right:1px solid #333;">
+      <div class="sign-lbl">FOR {{SELLER_NAME_UPPER}}</div>
+      <div class="sign-space">{{SELLER_SIGNATURE}}</div>
+      <div class="auth-lbl">Authorized Signatory</div>
+    </div>
+    <div class="sign-block">
+      <div class="sign-lbl">DECLARATION</div>
+      <div style="font-size:10px;color:#444;line-height:1.6;">
+        We declare that this invoice shows the actual price of the services described<br>
+        and that all particulars are true and correct.
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes + Terms -->
+  <div class="nt-row">
+    <div class="notes-block">
+      <div class="sec-lbl">Notes:</div>
+      Thank you for your business.
+    </div>
+    <div class="terms-block">
+      <div class="sec-lbl">Terms and Conditions:</div>
+      1. Subscription is non-refundable once activated.<br>
+      2. Auto-renewal applies unless cancelled before the due date.<br>
+      3. For support, contact {{SELLER_EMAIL}}.
+    </div>
+  </div>
+
+  <!-- Page footer -->
+  <div class="page-foot">
+    <span>Page 1 / 1</span>
+    <span>This is a computer-generated invoice and does not require a physical signature.</span>
+  </div>
+
+</div>
+</body>
+</html>

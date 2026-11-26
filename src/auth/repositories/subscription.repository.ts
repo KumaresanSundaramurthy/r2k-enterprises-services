@@ -17,6 +17,7 @@ export interface PublicPlanRow {
   BillingCycle: string;
   SectorName: string;
   SectorCode: string;
+  FeaturedModules: string | null;
 }
 
 export interface PlanModuleRow {
@@ -108,7 +109,7 @@ export class SubscriptionRepository {
       .select(
         "SPT.SectorPlanUID", "SPT.SectorUID", "SPT.PlanUID", "SPT.Price",
         "SPT.TaxableAmount", "SPT.TaxAmount", "SPT.TotalAmount",
-        "SPT.DurationDays", "SPT.MaxUsers", "SPT.MaxBranches",
+        "SPT.DurationDays", "SPT.MaxUsers", "SPT.MaxBranches", "SPT.FeaturedModules",
         "SP.PlanName", "SP.PlanCode", "SP.BillingCycle",
         "S.SectorName", "S.SectorCode"
       )

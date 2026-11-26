@@ -177,7 +177,7 @@ export class TransactionPrintService {
         return (
           `<tr><td style="text-align:center">${i + 1}</td><td>${e(item.ProductName)}</td><td style="text-align:center">${e(item.HSNCode ?? "-")}</td>` +
           `<td style="text-align:right">${fixed(n(item.UnitPrice))}</td><td style="text-align:center">${smartDecimal(item.Quantity ?? 0)} ${e(item.PrimaryUnitName)}</td>` +
-          `<td style="text-align:right">${fixed(phpRound(n(item.UnitPrice) * n(item.Quantity), 2))}</td>` +
+          `<td style="text-align:right">${fixed(n(item.TaxableAmount))}</td>` +
           `<td style="text-align:right">${tax ? `${fixed(tax)} (${grouped(n(item.TaxPercentage), 0)}%)` : ""}</td><td style="text-align:right">${fixed(n(item.NetAmount))}</td></tr>`
         );
       })
@@ -221,7 +221,7 @@ export class TransactionPrintService {
     const termsPart = h.TermsConditions ? `<p style="font-size:8pt;margin-top:4px;"><strong>Terms:</strong> ${nl2br(e(h.TermsConditions))}</p>` : "";
 
     // HSN totals from the lines (match the HSN summary rows)
-    const hsnTaxable = items.reduce((sum, item) => sum + phpRound(n(item.UnitPrice) * n(item.Quantity), 2), 0);
+    const hsnTaxable = items.reduce((sum, item) => sum + n(item.TaxableAmount), 0);
     const hsnCgst = items.reduce((sum, item) => sum + n(item.CgstAmount), 0);
     const hsnSgst = items.reduce((sum, item) => sum + n(item.SgstAmount), 0);
     const hsnIgst = items.reduce((sum, item) => sum + n(item.IgstAmount), 0);
@@ -358,7 +358,7 @@ export class TransactionPrintService {
             "{{ITEM.UNIT_PRICE}}": cur + fixed(n(item.UnitPrice)),
             "{{ITEM.QTY}}": e(item.Quantity),
             "{{ITEM.UNIT}}": e(item.PrimaryUnitName),
-            "{{ITEM.TAXABLE_VALUE}}": cur + fixed(phpRound(n(item.UnitPrice) * n(item.Quantity), 2)),
+            "{{ITEM.TAXABLE_VALUE}}": cur + fixed(n(item.TaxableAmount)),
             "{{ITEM.TAX_PCT}}": grouped(n(item.TaxPercentage), 2),
             "{{ITEM.TAX_AMT}}": cur + fixed(tax),
             "{{ITEM.NET_AMOUNT}}": cur + fixed(n(item.NetAmount)),
@@ -380,7 +380,7 @@ export class TransactionPrintService {
         const taxPct = n(item.TaxPercentage);
         const key = `${hsn}||${taxPct}`;
         const group = groups.get(key) ?? { hsn, taxPct, taxable: 0, cgst: 0, sgst: 0, igst: 0 };
-        group.taxable += phpRound(n(item.UnitPrice) * n(item.Quantity), 2);
+        group.taxable += n(item.TaxableAmount);
         group.cgst += n(item.CgstAmount);
         group.sgst += n(item.SgstAmount);
         group.igst += n(item.IgstAmount);
