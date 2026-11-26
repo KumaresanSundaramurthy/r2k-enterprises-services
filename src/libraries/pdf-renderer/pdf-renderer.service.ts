@@ -39,10 +39,10 @@ const PAPER_FORMATS: Record<string, PaperFormat> = {
 
 export interface PdfOptions {
   paperSize?: string;
-  // CSS margins used when the HTML has no @page margin of its own
   margin?: { top?: string; right?: string; bottom?: string; left?: string };
-  // How long to wait for images / fonts referenced by the HTML
   timeoutMs?: number;
+  // Puppeteer footer template — use <span class="pageNumber"> / <span class="totalPages">
+  footerTemplate?: string;
 }
 
 /*
@@ -147,9 +147,126 @@ export class PdfRendererService implements OnModuleDestroy {
         printBackground: true,
         preferCSSPageSize: true,
         margin: options.margin,
+        ...(options.footerTemplate
+          ? { displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: options.footerTemplate }
+          : {}),
         timeout,
       });
       return Buffer.from(pdf);
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Load html in headless Chrome, split it into per-page HTML strings at A4 height (1123 px),
+   * breaking only at item row (<tr data-item-idx="N">) boundaries. Each returned string is a
+   * complete HTML document containing only the rows for that page. Non-last pages have the
+   * summary/totals section hidden; the last page shows it. {{PRINT_PAGE_NUM}} and
+   * {{PRINT_TOTAL_PAGES}} tokens are replaced in every page. Returns [html] unchanged when
+   * the content fits on a single page or no data-item-idx rows are found.
+   */
+  async paginateHtml(html: string): Promise<string[]> {
+    /* Usable content height per A4 page (px at 96 dpi):
+       A4 = 1123 px, footer zone = 60 px, top breathing room = 40 px. */
+    const PAGE_H = 1123 - 60 - 40; // 1023 px
+
+    /* Zero html+body margins so row y-positions start at 0. */
+    const measHtml = html.includes("</head>")
+      ? html.replace("</head>", "<style>html,body{margin:0!important;}</style></head>")
+      : "<style>html,body{margin:0!important;}</style>" + html;
+
+    const browser = await this.getBrowser();
+    const page = await browser.newPage();
+    try {
+      /* 794 px = A4 width at 96 dpi. 30000 px height puts all rows in viewport. */
+      await page.setViewport({ width: 794, height: 30000 });
+
+      // === 1. Measure item row positions ===
+      await page.setContent(measHtml, { waitUntil: "domcontentloaded", timeout: 15000 });
+      const itemPos: { idx: number; bottom: number }[] = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll("tr[data-item-idx]")).map((tr) => ({
+          idx: parseInt((tr as HTMLElement).getAttribute("data-item-idx") ?? "0", 10),
+          bottom: tr.getBoundingClientRect().bottom,
+        }));
+      });
+
+      if (itemPos.length === 0) return [html];
+
+      // === 2. Determine page break item indices ===
+      const pageEndIdx: number[] = [];
+      let offset = 0;
+      const lastIdx = itemPos[itemPos.length - 1].idx;
+
+      while (true) {
+        const clipEnd = offset + PAGE_H;
+        let lastFitIdx = -1;
+        for (let i = itemPos.length - 1; i >= 0; i--) {
+          if (itemPos[i].bottom <= clipEnd) { lastFitIdx = itemPos[i].idx; break; }
+        }
+        if (lastFitIdx < 0 || lastFitIdx === lastIdx) {
+          pageEndIdx.push(lastIdx);
+          break;
+        }
+        pageEndIdx.push(lastFitIdx);
+        const breakBottom = itemPos.find((p) => p.idx === lastFitIdx)!.bottom;
+        offset = breakBottom;
+      }
+
+      const totalPages = pageEndIdx.length;
+      if (totalPages <= 1) return [html];
+
+      // === 3. Generate HTML for each page via DOM manipulation ===
+      const pageHtmls: string[] = [];
+      let prevEnd = -1;
+
+      for (let p = 0; p < totalPages; p++) {
+        const startIdx = prevEnd + 1;
+        const endIdx   = pageEndIdx[p];
+        const isLast   = p === totalPages - 1;
+
+        /* Reload fresh HTML for each page so there is no stale state. */
+        await page.setContent(measHtml, { waitUntil: "domcontentloaded", timeout: 10000 });
+
+        const rawHtml: string = await page.evaluate(
+          (start: number, end: number, last: boolean) => {
+            /* Show only item rows for this page */
+            document.querySelectorAll("tr[data-item-idx]").forEach((tr) => {
+              const idx = parseInt((tr as HTMLElement).getAttribute("data-item-idx") ?? "0", 10);
+              (tr as HTMLElement).style.display = idx >= start && idx <= end ? "" : "none";
+            });
+
+            /* Non-last pages: hide everything after the items table (totals, notes, etc.) */
+            if (!last) {
+              const lastItem = document.querySelector(`tr[data-item-idx="${end}"]`);
+              if (lastItem) {
+                /* Walk up from the items table, hiding all subsequent siblings at every level. */
+                let el: Element | null = lastItem.closest("table");
+                while (el && el !== document.body) {
+                  let sib = el.nextElementSibling;
+                  while (sib) {
+                    (sib as HTMLElement).style.display = "none";
+                    sib = sib.nextElementSibling;
+                  }
+                  el = el.parentElement;
+                }
+              }
+            }
+
+            return document.documentElement.outerHTML;
+          },
+          startIdx, endIdx, isLast
+        );
+
+        const pageHtml = rawHtml
+          .replace(/\{\{PRINT_PAGE_NUM\}\}/g, String(p + 1))
+          .replace(/\{\{PRINT_TOTAL_PAGES\}\}/g, String(totalPages));
+
+        pageHtmls.push(pageHtml);
+        prevEnd = endIdx;
+      }
+
+      return pageHtmls;
     } finally {
       await page.close().catch(() => undefined);
     }

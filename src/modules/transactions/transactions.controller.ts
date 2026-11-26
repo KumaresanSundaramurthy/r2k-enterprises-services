@@ -89,6 +89,12 @@ export class TransactionsController {
     return ciSuccess(await this.print.detail(dto.orgId, postInt(dto, "TransUID"), postInt(dto, "ModuleUID"), String(dto.PrintType || "a4")));
   }
 
+  @Get("getTransactionPreviewPdf")
+  @ApiOperation({ summary: "A4 modal preview as PDF — returns Header and PdfBase64 (for in-modal PDF viewer)" })
+  async getTransactionPreviewPdf(@Query() dto: TransDetailDto) {
+    return ciSuccess(await this.print.previewPdf(dto.orgId, postInt(dto, "TransUID"), postInt(dto, "ModuleUID")));
+  }
+
   @Get("downloadPdf/:transUID")
   @ApiParam({ name: "transUID", type: Number })
   @ApiOperation({ summary: "Download a transaction A4 print as PDF (application/pdf attachment)" })

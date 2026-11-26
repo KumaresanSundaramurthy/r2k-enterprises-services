@@ -11,6 +11,37 @@ import { TransactionsRepository } from "./transactions.repository";
 type Row = Record<string, unknown>;
 
 const NON_EDITABLE = ["Converted", "Cancelled", "Rejected"];
+
+/* CSS injected into every A4 PDF render. The template's .print-footer is hidden because
+   Puppeteer's footerTemplate (built in pdf() / previewPdf()) renders the footer correctly
+   with <span class="pageNumber"> / <span class="totalPages"> per page. */
+function pdfCss(size: string): string {
+  return (
+    `@page{size:${size};margin:10mm 5mm 15mm 5mm;}` +
+    `body{padding:0 5mm 80px!important;margin:0!important;}` +
+    `.print-content{margin:0!important;}` +
+    `#trans-type-header td{border-left:none!important;border-right:none!important;}` +
+    `.print-footer{display:none!important;}`
+  );
+}
+
+/* Puppeteer footer template — renders org name, doc number and page counter on every page. */
+function buildFooterTemplate(orgName: string, docNumber: string, primaryColor: string): string {
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const color = primaryColor || "#1a3c6e";
+  return (
+    `<div style="width:100%;display:flex;justify-content:space-between;` +
+    `font-size:10px;font-style:italic;color:${color};` +
+    `padding:4px 12px;box-sizing:border-box;font-family:Arial,sans-serif;">` +
+    `<span style="font-weight:600;">${esc(orgName)}</span>` +
+    `<span>${esc(docNumber)}</span>` +
+    `<span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>` +
+    `</div>`
+  );
+}
+
+/* Strip inline scripts from template HTML so they cannot override page-counter elements. */
+const STRIP_SCRIPTS = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi;
 const SYSTEM_FONTS = ["Arial", "Helvetica", "Verdana", "Tahoma", "Trebuchet MS", "Times New Roman", "Georgia", "Palatino Linotype", "Calibri"];
 const DUE_DATE_LABELS: Record<number, string> = {
   103: "Due Date",
@@ -96,7 +127,14 @@ export class TransactionPrintService {
       } catch (err) {
         html = `<div style="padding:20px;color:#c00;">Preview error: ${e((err as Error).message)}</div>`;
       }
-      return { Header: header, PrintHtml: html };
+      /* Split into per-page HTMLs via Puppeteer — CI3 loads each directly into an iframe. */
+      let pages: string[] | null = null;
+      try {
+        pages = await this.pdfRenderer.paginateHtml(html);
+      } catch {
+        /* Non-fatal — CI3 falls back to client-side measurement when Pages is null. */
+      }
+      return { Header: header, PrintHtml: html, Pages: pages };
     }
     if (printType === "thermal") {
       const [items, org, thermal] = await Promise.all([this.reads.items(orgUID, transUID), this.orgInfo.get(orgUID), this.lookups.thermalConfig(orgUID, moduleUID)]);
@@ -127,12 +165,35 @@ export class TransactionPrintService {
     const header = await this.reads.find(orgUID, transUID, moduleUID);
     if (!header) return null;
     const size = PdfRendererService.paperFormat(paperSize);
-    const html = (await this.a4Html(orgUID, moduleUID, header))
+    const [rawHtml, org, theme] = await Promise.all([this.a4Html(orgUID, moduleUID, header), this.orgInfo.get(orgUID), this.lookups.printTheme(orgUID, moduleUID)]);
+    const footerTemplate = buildFooterTemplate(s(org?.BrandName ?? org?.Name), s(header.UniqueNumber ?? ""), s(theme?.PrimaryColor) || "#1a3c6e");
+    const html = rawHtml
+      .replace(STRIP_SCRIPTS, "")
       .replace(/__COPY_LABEL__/g, "ORIGINAL FOR RECIPIENT")
-      .replace("</head>", "<style>body{padding:0!important;margin:0!important;}.print-content{margin:0!important;}#trans-type-header td{border-left:none!important;border-right:none!important;}</style></head>")
-      .replace(/@page\s*\{[^}]*\}/g, `@page{size:${size};margin:10mm 5mm;}`);
-    const bytes = await this.pdfRenderer.render(html, { paperSize: size, margin: { top: "10mm", bottom: "10mm", left: "5mm", right: "5mm" } });
+      .replace(/\{\{PRINT_PAGE_NUM\}\}/g, "1")
+      .replace(/\{\{PRINT_TOTAL_PAGES\}\}/g, "1")
+      .replace(/@page\s*\{[^}]*\}/g, "")
+      .replace("</head>", `<style>${pdfCss(size)}</style></head>`);
+    const bytes = await this.pdfRenderer.render(html, { paperSize: size, margin: { top: "10mm", bottom: "15mm", left: "5mm", right: "5mm" }, footerTemplate });
     return { header, bytes };
+  }
+
+  /* previewPdf — renders the A4 HTML as a PDF and returns it as base64 for the modal PDF viewer. */
+  async previewPdf(orgUID: number, transUID: number, moduleUID: number): Promise<{ Header: Row; PdfBase64: string }> {
+    const header = await this.reads.find(orgUID, transUID, moduleUID);
+    if (!header) throw new CiValidationError("Transaction not found.");
+    const size = PdfRendererService.paperFormat("A4");
+    const [rawHtml, org, theme] = await Promise.all([this.a4Html(orgUID, moduleUID, header), this.orgInfo.get(orgUID), this.lookups.printTheme(orgUID, moduleUID)]);
+    const footerTemplate = buildFooterTemplate(s(org?.BrandName ?? org?.Name), s(header.UniqueNumber ?? ""), s(theme?.PrimaryColor) || "#1a3c6e");
+    const pdfHtml = rawHtml
+      .replace(STRIP_SCRIPTS, "")
+      .replace(/__COPY_LABEL__/g, "ORIGINAL FOR RECIPIENT")
+      .replace(/\{\{PRINT_PAGE_NUM\}\}/g, "1")
+      .replace(/\{\{PRINT_TOTAL_PAGES\}\}/g, "1")
+      .replace(/@page\s*\{[^}]*\}/g, "")
+      .replace("</head>", `<style>${pdfCss(size)}</style></head>`);
+    const bytes = await this.pdfRenderer.render(pdfHtml, { paperSize: size, margin: { top: "10mm", bottom: "15mm", left: "5mm", right: "5mm" }, footerTemplate });
+    return { Header: header, PdfBase64: bytes.toString("base64") };
   }
 
   // _renderA4Html with its inputs loaded — the A4 print HTML of a document already read (header)
@@ -175,7 +236,7 @@ export class TransactionPrintService {
       .map((item, i) => {
         const tax = phpRound(n(item.CgstAmount) + n(item.SgstAmount) + n(item.IgstAmount), 2);
         return (
-          `<tr><td style="text-align:center">${i + 1}</td><td>${e(item.ProductName)}</td><td style="text-align:center">${e(item.HSNCode ?? "-")}</td>` +
+          `<tr data-item-idx="${i}"><td style="text-align:center">${i + 1}</td><td>${e(item.ProductName)}</td><td style="text-align:center">${e(item.HSNCode ?? "-")}</td>` +
           `<td style="text-align:right">${fixed(n(item.UnitPrice))}</td><td style="text-align:center">${smartDecimal(item.Quantity ?? 0)} ${e(item.PrimaryUnitName)}</td>` +
           `<td style="text-align:right">${fixed(n(item.TaxableAmount))}</td>` +
           `<td style="text-align:right">${tax ? `${fixed(tax)} (${grouped(n(item.TaxPercentage), 0)}%)` : ""}</td><td style="text-align:right">${fixed(n(item.NetAmount))}</td></tr>`
@@ -365,7 +426,9 @@ export class TransactionPrintService {
             "{{ITEM.DISCOUNT}}": cur + fixed(n(item.DiscountAmount)),
             "{{ITEM.PART_NUMBER}}": e(item.PartNumber),
           };
-          return Object.entries(map).reduce((row, [token, value]) => row.split(token).join(value), rowTemplate);
+          const row = Object.entries(map).reduce((r, [token, value]) => r.split(token).join(value), rowTemplate);
+          /* Stamp the item index so Puppeteer can identify and split item rows by page. */
+          return row.replace(/(<tr)/i, `$1 data-item-idx="${i}"`);
         })
         .join("")
     );
