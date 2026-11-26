@@ -50,6 +50,7 @@ export class TransDetailDto extends OrgContextDto {
   @ApiProperty({ type: Number }) @Allow() TransUID?: string | number;
   @ApiProperty({ type: Number, example: 101 }) @Allow() ModuleUID?: string | number;
   @ApiPropertyOptional({ enum: ["a4", "thermal", "view"], default: "a4" }) @Allow() PrintType?: string;
+  @ApiPropertyOptional({ enum: ["customer", "transport", "supplier"], default: "customer" }) @Allow() copy?: string;
 }
 
 export class TransAttachmentsDto extends OrgContextDto {

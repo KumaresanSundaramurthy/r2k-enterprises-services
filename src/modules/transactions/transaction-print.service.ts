@@ -42,6 +42,7 @@ function buildFooterTemplate(orgName: string, docNumber: string, primaryColor: s
 
 /* Strip inline scripts from template HTML so they cannot override page-counter elements. */
 const STRIP_SCRIPTS = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi;
+const COPY_LABELS: Record<string, string> = { customer: "ORIGINAL FOR RECIPIENT", transport: "TRANSPORTER", supplier: "SUPPLIER" };
 const SYSTEM_FONTS = ["Arial", "Helvetica", "Verdana", "Tahoma", "Trebuchet MS", "Times New Roman", "Georgia", "Palatino Linotype", "Calibri"];
 const DUE_DATE_LABELS: Record<number, string> = {
   103: "Due Date",
@@ -178,16 +179,17 @@ export class TransactionPrintService {
     return { header, bytes };
   }
 
-  /* previewPdf — renders the A4 HTML as a PDF and returns it as base64 for the modal PDF viewer. */
-  async previewPdf(orgUID: number, transUID: number, moduleUID: number): Promise<{ Header: Row; PdfBase64: string }> {
+  /* previewPdf — renders one copy PDF (copy = customer | transport | supplier) and returns it as base64. */
+  async previewPdf(orgUID: number, transUID: number, moduleUID: number, copy: string): Promise<{ Header: Row; PdfBase64: string }> {
     const header = await this.reads.find(orgUID, transUID, moduleUID);
     if (!header) throw new CiValidationError("Transaction not found.");
     const size = PdfRendererService.paperFormat("A4");
     const [rawHtml, org, theme] = await Promise.all([this.a4Html(orgUID, moduleUID, header), this.orgInfo.get(orgUID), this.lookups.printTheme(orgUID, moduleUID)]);
     const footerTemplate = buildFooterTemplate(s(org?.BrandName ?? org?.Name), s(header.UniqueNumber ?? ""), s(theme?.PrimaryColor) || "#1a3c6e");
+    const label   = COPY_LABELS[copy] ?? "ORIGINAL FOR RECIPIENT";
     const pdfHtml = rawHtml
       .replace(STRIP_SCRIPTS, "")
-      .replace(/__COPY_LABEL__/g, "ORIGINAL FOR RECIPIENT")
+      .replace(/__COPY_LABEL__/g, label)
       .replace(/\{\{PRINT_PAGE_NUM\}\}/g, "1")
       .replace(/\{\{PRINT_TOTAL_PAGES\}\}/g, "1")
       .replace(/@page\s*\{[^}]*\}/g, "")

@@ -92,7 +92,7 @@ export class TransactionsController {
   @Get("getTransactionPreviewPdf")
   @ApiOperation({ summary: "A4 modal preview as PDF — returns Header and PdfBase64 (for in-modal PDF viewer)" })
   async getTransactionPreviewPdf(@Query() dto: TransDetailDto) {
-    return ciSuccess(await this.print.previewPdf(dto.orgId, postInt(dto, "TransUID"), postInt(dto, "ModuleUID")));
+    return ciSuccess(await this.print.previewPdf(dto.orgId, postInt(dto, "TransUID"), postInt(dto, "ModuleUID"), String(dto.copy || "customer")));
   }
 
   @Get("downloadPdf/:transUID")
